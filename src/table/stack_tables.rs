@@ -111,6 +111,7 @@ fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: 
 #[derive(Debug, Default)]
 pub struct StackTables {
     pub depth: StackVariable,
+    pub depth_is_full_table: bool,
 
     pub and: StackVariable,
     pub or: StackVariable,
@@ -124,6 +125,7 @@ pub struct StackTables {
     pub rshift: [StackVariable; 5],
 
     pub lookup: StackVariable,
+    pub lookup_is_full_table: bool,
 }
 
 impl StackTables {
@@ -134,11 +136,13 @@ impl StackTables {
     
     pub fn depth_lookup(mut self, stack: &mut StackTracker, full_table: bool) -> Self {
         self.depth = if full_table { lookup_from_depth(stack, -17) } else { half_lookup_from_depth(stack, -17) };
+        self.depth_is_full_table = full_table;
         self
     }
 
     pub fn lookup(mut self, stack: &mut StackTracker, full_table: bool) -> Self {
         self.lookup = if full_table { lookup(stack) } else { half_lookup(stack) };
+        self.lookup_is_full_table;
         self
     }
 
@@ -157,6 +161,21 @@ impl StackTables {
         self
     }
 
+    pub fn rot_operation(self, stack: &mut StackTracker, n: u8, right: bool) -> Self {
+        assert!(n < 5);
+        let npos = n;
+        let ncomplement = 4-n;
+        let nright = if right { npos } else { ncomplement };
+        let nleft = if right { ncomplement } else { npos };
+        self.operation(stack, &Operation::RShift(nright), false)
+            .operation(stack, &Operation::LShift(nleft), false)
+    }
+
+    pub fn addition_operation(self, stack: &mut StackTracker, n: u32) -> Self {
+        self.operation(stack, &Operation::Modulo(n), false)
+            .operation(stack, &Operation::Quotient(n), false)
+    }
+
     pub fn get_operation_table(&self, op: &Operation) -> &StackVariable {
         match op {
             &Operation::And => &self.and,
@@ -171,10 +190,10 @@ impl StackTables {
         }
     }
    
-    pub fn apply(&self, stack: &mut StackTracker, op: &Operation, full_table: bool) -> StackVariable {
+    pub fn apply(&self, stack: &mut StackTracker, op: &Operation) -> StackVariable {
         let is_binary = !op.is_unary();
 
-        if is_binary && !full_table {
+        if is_binary && !self.lookup_is_full_table {
             sort(stack);
         }
         if is_binary {
@@ -220,9 +239,9 @@ impl StackTables {
 
     //assumes that x[nx] will be consumed and y[ny] will be copied
     //it also asumes that the depth lookup table is on the botom of the stack followed by the binary operation table
-    pub fn apply_with_depth(&self, stack: &mut StackTracker, mut x: &mut StackVariable, y: StackVariable, nx: u8, ny: u8, use_full_tables: bool )  -> StackVariable {
+    pub fn apply_with_depth(&self, stack: &mut StackTracker, mut x: &mut StackVariable, y: StackVariable, nx: u8, ny: u8 )  -> StackVariable {
 
-        if !use_full_tables {
+        if !self.depth_is_full_table {
             return self.apply_with_depth_half(stack, x, y, nx, ny);
         }
 
@@ -240,6 +259,24 @@ impl StackTables {
 
         stack.op_add();
         stack.op_pick()
+    }
+
+
+    //assume that if we want to shift two nibbles, the stack will have the two nibbles on the top of the stack
+    //to the top will be applied the shift and to the second from the top will be applied the complement
+    //then the result is added
+    pub fn apply_shift_two_nibbles(&self, stack: &mut StackTracker, n:u8, right: bool) -> StackVariable {
+        let npos = n;
+        let ncomplement = 4-n;
+        let op = if right { Operation::RShift(npos) } else { Operation::RShift(ncomplement) };
+        let opcomplement = if right { Operation::LShift(ncomplement) } else { Operation::LShift(npos) };
+
+        stack.get_value_from_table(*self.get_operation_table(&op), None);
+        stack.op_swap();
+        stack.get_value_from_table(*self.get_operation_table(&opcomplement), None);
+        let ret = stack.op_add();
+        stack.rename(ret, &format!("shift_two_nibbles_{}", n));
+        ret
     }
 
     pub fn drop(self, stack: &mut StackTracker) {
@@ -276,7 +313,7 @@ mod test {
         let tables = StackTables::new().operation(&mut stack, &op, false);
 
         stack.number(x);
-        tables.apply(&mut stack, &op, false);
+        tables.apply(&mut stack, &op);
 
         stack.number(expected);
         stack.op_equalverify();
@@ -299,9 +336,9 @@ mod test {
         let vy = stack.number(y);
 
         if depth_lookup {
-            tables.apply_with_depth(&mut stack, &mut vx, vy, 0, 0, full_table);
+            tables.apply_with_depth(&mut stack, &mut vx, vy, 0, 0);
         } else {
-            tables.apply(&mut stack, &op, full_table);
+            tables.apply(&mut stack, &op);
         }
 
         stack.number(expected);
@@ -320,7 +357,6 @@ mod test {
 
     #[test]
     fn test_binary_ops() {
-        test_binary(8,8, Operation::Or, 8 | 8, false, true);
         for depth in [true,false] {
             for b in [false,true] {
                 for i in 0..16 {
@@ -351,4 +387,36 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_shift_two_nibbles() {
+        for right in [true, false] {
+            for x in 0..16 {
+                for y in 0..16 {
+                    for j in 0..5 {
+                        let mut stack = StackTracker::new();
+                        let tables = StackTables::new().rot_operation(&mut stack, j, right);
+
+                        stack.number(x);
+                        stack.number(y);
+
+                        tables.apply_shift_two_nibbles(&mut stack, j, right);
+
+                        let result = x * 16 + y;
+                        let result = if right {
+                            (result >> j) & 0xf
+                        } else {
+                            ((result << j) & 0xf0 ) >> 4
+                        };
+                        stack.number(result); 
+
+                        stack.op_equal();
+                        stack.to_altstack();
+                        tables.drop(&mut stack);
+                        stack.from_altstack();
+                        assert!(stack.run().success);
+                    }
+                }
+            }
+        }
+    }
 }
