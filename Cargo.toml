@@ -1,0 +1,9 @@
+[package]
+name = "bitcoin-script-functions"
+version = "0.1.0"
+edition = "2021"
+authors = ["Martin Jonas <martinjonas@gmail.com>"]
+
+[dependencies]
+#bitcoin-script-stack = { git = "https://github.com/FairgateLabs/rust-bitcoin-script-stack" }
+bitcoin-script-stack = { path = "../rust-bitcoin-script-stack", features = ["interactive"]}
