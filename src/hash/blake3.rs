@@ -381,12 +381,13 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
         stack.repeat((mandatory_first_block_padding)*2-1);
     }
 
+    stack.clear_definitions();
+
     let mut original_message = Vec::new();
     for i in 0..msg_len/4 {
         let m = stack.define(8, &format!("msg_{}", i));
         original_message.push(m);
     }
-
 
     for _ in original_message.iter() {
         stack.to_altstack();
@@ -410,10 +411,14 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
 
         // add the padding on the last round
         if last_round && num_padding_bytes > 0 {
-            stack.number(0);
-            stack.repeat(num_padding_bytes*2-1);
+            //TODO: calculate how to join this instead of define
             for i in 0..(num_padding_bytes/4) {
-                let m = stack.define(8, &format!("padd_{}", i));
+                let mut m = stack.number(0);
+                //stack.repeat(num_padding_bytes*2-1);
+                stack.repeat(7);
+                stack.join_count(&mut m, 7);
+                stack.rename(m, &format!("padd_{}", i));
+                //let m = stack.define(8, &format!("padd_{}", i));
                 original_message.push(m);
             }
         }
@@ -437,10 +442,7 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
             stack.drop(stack.get_var_from_stack(0));
         }
 
-
-
     }
-
 
     //drop tables
     tables.drop(stack);
@@ -519,101 +521,6 @@ use super::*;
 
     }
 
-    pub fn from_u8_high(stack: &mut StackTracker) -> StackVariable {
-        let mut high = Vec::new();
-        for i in (0..0x100).rev() {
-            high.push(stack.number(i>>4));
-        }
-        stack.rename(high[0], "high_nibble" );
-        stack.join_count(&mut high[0], 0xff)
-    }
-
-    pub fn from_u8_low(stack: &mut StackTracker) -> StackVariable {
-        let mut low = Vec::new();
-        for i in (0..0x100).rev() {
-            low.push(stack.number(i & 0xf));
-        }
-        stack.rename(low[0], "low_nibble" );
-        stack.join_count(&mut low[0], 0xff)
-    }
-
-    pub fn from_u4_to_high(stack: &mut StackTracker) -> StackVariable {
-        let mut high = Vec::new();
-        for i in (0..0x10).rev() {
-            high.push(stack.number(i<<4));
-        }
-        stack.rename(high[0], "to_high" );
-        stack.join_count(&mut high[0], 0xf)
-    }
-
-    pub fn u8_to_u4(stack: &mut StackTracker, high_table: StackVariable, low_table: StackVariable, number: StackVariable) -> StackVariable {
-
-        stack.explode(number);
-        for _ in 0..4 {
-            stack.op_dup();
-            stack.get_value_from_table(low_table, None);
-            stack.to_altstack();
-            stack.get_value_from_table(high_table, None);
-            stack.to_altstack();
-        }
-
-        stack.from_altstack_joined(8, "u4_number_from_u8")
-
-    }
-
-    pub fn u4_to_u8(stack: &mut StackTracker, to_high: StackVariable, number: StackVariable) -> StackVariable {
-
-        stack.explode(number);
-        for _ in 0..4 {
-            stack.op_swap();
-            stack.get_value_from_table(to_high, None);
-            stack.op_add();
-            stack.to_altstack();
-        }
-
-        stack.from_altstack_joined(4, "u8_number_from_u4")
-
-    }
-
-
-    #[test]
-    fn test_convert() {
-
-        let mut stack = StackTracker::new();
-        let start_full= stack.get_script().len();
-        let high_table = from_u8_high(&mut stack);
-        let low_table = from_u8_low(&mut stack);
-        let to_high = from_u4_to_high(&mut stack);
-
-        let x = stack.number_u32_u8(0xDEAD_BEEF);
-
-
-        let start= stack.get_script().len();
-
-        let converted = u8_to_u4(&mut stack, high_table, low_table, x);
-        let end = stack.get_script().len();
-        println!("Convert size u8 to u4: {}", end-start);
-
-        let start= stack.get_script().len();
-        let converted = u4_to_u8(&mut stack, to_high, converted);
-
-        let end = stack.get_script().len();
-        println!("Convert size u4 to u8: {}", end-start);
-
-
-        stack.drop(converted);
-        stack.drop(to_high);
-        stack.drop(low_table);
-        stack.drop(high_table);
-
-        let end_full = stack.get_script().len();
-        println!("Convert size u4 to u8: {}", end_full-start_full);
-
-
-
-
-    }
-
     #[test]
     fn test_blake3() {
         let hex_out = "86ca95aefdee3d969af9bcc78b48a5c1115be5d66cafc2fc106bbd982d820e70";
@@ -652,9 +559,8 @@ use super::*;
         let hex_out = "290eef2c4633e64835e2ea6395e9fc3e8bf459a7";
 
         let mut stack = StackTracker::new();
-
         let hex_in = "00000001".repeat(10);
-        stack.hexstr_as_nibbles(&hex_in);
+        let _ = stack.hexstr_as_nibbles(&hex_in);
 
         let start = stack.get_script().len();
         let mut result = blake3(&mut stack, 40, 5);
