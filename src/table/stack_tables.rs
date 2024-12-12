@@ -249,7 +249,7 @@ impl StackTables {
 
         if is_binary && !self.lookup_is_full_table {
             sort(stack);
-            println!("sorting");
+            //println!("sorting");
         }
         if is_binary {
             stack.get_value_from_table(self.lookup, None);
