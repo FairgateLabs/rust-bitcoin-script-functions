@@ -1,4 +1,3 @@
-
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 
 use crate::util::sort;
@@ -107,6 +106,60 @@ fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: 
     stack.join_in_stack(total_size-1, total_size, Some(&format!("op_{:?}", op)))
 }
 
+#[derive(Clone, Debug)]
+pub struct StackVariableOp {
+    pub var: StackVariable,
+    pub n: Option<u32>,
+    pub copy: bool,
+    pub constant: Option<u32>,
+}
+
+impl StackVariableOp {
+    pub fn new(var: StackVariable, n: Option<u32>, copy: bool, constant: Option<u32>) -> Self {
+        Self {
+            var,
+            n,
+            copy,
+            constant,
+        }
+    }
+
+    pub fn access(&self, stack: &mut StackTracker) -> StackVariable {
+        apply_op(stack, Some(self.clone()))
+    }
+
+}
+
+fn apply_op(stack: &mut StackTracker, op: Option<StackVariableOp>) -> StackVariable {
+    if let Some(var) = op {
+        if let Some(c) = var.constant {
+            if let Some(n) = var.n {
+                stack.number((c >> (4 * (7-n))) & 0xf)
+            } else {
+                stack.number_u32(c)
+            }
+        } else {
+            if let Some(n) = var.n {
+                if var.copy {
+                    stack.copy_var_sub_n(var.var, n)
+                } else {
+                    stack.move_var_sub_n(&mut var.var.clone(), n)
+                }
+            } else {
+                if var.copy {
+                    stack.copy_var(var.var)
+                } else {
+                    stack.move_var(var.var)
+                }
+            }
+        }
+    } else {
+        StackVariable::null()
+    }
+}
+
+
+
 
 #[derive(Debug, Default)]
 pub struct StackTables {
@@ -135,14 +188,15 @@ impl StackTables {
     }
     
     pub fn depth_lookup(mut self, stack: &mut StackTracker, full_table: bool) -> Self {
-        self.depth = if full_table { lookup_from_depth(stack, -17) } else { half_lookup_from_depth(stack, -17) };
+        //TODO: FIX -17 for blake  -18 for sha for full lookup
+        self.depth = if full_table { lookup_from_depth(stack, -18) } else { half_lookup_from_depth(stack, -17) };
         self.depth_is_full_table = full_table;
         self
     }
 
     pub fn lookup(mut self, stack: &mut StackTracker, full_table: bool) -> Self {
         self.lookup = if full_table { lookup(stack) } else { half_lookup(stack) };
-        self.lookup_is_full_table;
+        self.lookup_is_full_table = full_table;
         self
     }
 
@@ -195,6 +249,7 @@ impl StackTables {
 
         if is_binary && !self.lookup_is_full_table {
             sort(stack);
+            println!("sorting");
         }
         if is_binary {
             stack.get_value_from_table(self.lookup, None);
@@ -261,23 +316,54 @@ impl StackTables {
         stack.op_pick()
     }
 
+    //it consumes the two nibbles from the top of the stack 
+    pub fn apply_with_depth_stack(&self, stack: &mut StackTracker )  -> StackVariable {
+
+        stack.op_depth();
+        stack.op_dup();
+
+        //stack.debug();
+
+        stack.op_rot();
+
+        //stack.debug();
+
+        stack.op_sub();
+        stack.op_1sub();
+        stack.op_pick();
+
+        //stack.debug();
+
+        stack.op_add();
+        //stack.debug();
+        stack.op_add();
+        //stack.debug();
+        stack.op_pick()
+    }
+
 
     //assume that if we want to shift two nibbles, the stack will have the two nibbles on the top of the stack
     //to the top will be applied the shift and to the second from the top will be applied the complement
     //then the result is added
-    pub fn apply_shift_two_nibbles(&self, stack: &mut StackTracker, n:u8, right: bool) -> StackVariable {
+    pub fn apply_shift_two_nibbles(&self, stack: &mut StackTracker, n:u8, right: bool, var_op: Option<StackVariableOp>) -> StackVariable {
         let npos = n;
         let ncomplement = 4-n;
         let op = if right { Operation::RShift(npos) } else { Operation::RShift(ncomplement) };
         let opcomplement = if right { Operation::LShift(ncomplement) } else { Operation::LShift(npos) };
 
         stack.get_value_from_table(*self.get_operation_table(&op), None);
-        stack.op_swap();
+        if var_op.is_some() {
+            apply_op(stack, var_op);
+        } else {
+            stack.op_swap();
+        }
         stack.get_value_from_table(*self.get_operation_table(&opcomplement), None);
         let ret = stack.op_add();
         stack.rename(ret, &format!("shift_two_nibbles_{}", n));
         ret
     }
+
+
 
     pub fn drop(self, stack: &mut StackTracker) {
         let mut tables = vec![
@@ -354,6 +440,32 @@ mod test {
         assert!(stack.run().success);
     }
 
+    #[test]
+    fn test_depth_with_stack() {
+
+        let mut stack = StackTracker::new();
+        let tables = StackTables::new()
+            .depth_lookup(&mut stack, true).operation(&mut stack, &Operation::Xor, true);
+
+        stack.number(1);
+        stack.number(2);
+
+        stack.debug();
+
+
+        tables.apply_with_depth_stack(&mut stack);
+
+        stack.debug();
+        stack.number(3);
+        stack.op_equalverify();
+
+
+        tables.drop(&mut stack);
+        stack.op_true();
+
+        assert!(stack.run().success);
+
+    }
 
     #[test]
     fn test_binary_ops() {
@@ -396,10 +508,10 @@ mod test {
                         let mut stack = StackTracker::new();
                         let tables = StackTables::new().rot_operation(&mut stack, j, right);
 
-                        stack.number(x);
+                        let varx = stack.number(x);
                         stack.number(y);
-
-                        tables.apply_shift_two_nibbles(&mut stack, j, right);
+                        let var_op = StackVariableOp::new(varx, None, false, None);
+                        tables.apply_shift_two_nibbles(&mut stack, j, right, Some(var_op));
 
                         let result = x * 16 + y;
                         let result = if right {

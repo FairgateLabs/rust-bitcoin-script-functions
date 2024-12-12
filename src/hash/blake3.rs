@@ -52,7 +52,7 @@ pub fn right_rotate7_xored_sub(stack: &mut StackTracker, x : &mut StackVariable,
     stack.to_altstack();
     
     // r7 r0 >> 3
-    let w1 = tables.apply_shift_two_nibbles(stack, 3, true); 
+    let w1 = tables.apply_shift_two_nibbles(stack, 3, true, None); 
     stack.rename(w1, &format!("w{}", n+1));
 
     
@@ -89,7 +89,7 @@ pub fn right_rotate7_xored(stack: &mut StackTracker, var_map: &mut HashMap<u8, S
 
 
     // z6 z7 >> 3
-    let mut w0 = tables.apply_shift_two_nibbles(stack, 3, true); 
+    let mut w0 = tables.apply_shift_two_nibbles(stack, 3, true, None); 
     stack.rename(w0, "w0");
 
     for i in 0..6 {
@@ -99,7 +99,7 @@ pub fn right_rotate7_xored(stack: &mut StackTracker, var_map: &mut HashMap<u8, S
     stack.from_altstack();
     stack.from_altstack();
 
-    let w7 = tables.apply_shift_two_nibbles(stack, 3, true); 
+    let w7 = tables.apply_shift_two_nibbles(stack, 3, true, None); 
     stack.rename(w7, "w7");
     
 
