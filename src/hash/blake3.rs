@@ -20,7 +20,7 @@ pub fn right_rotate_xored(stack: &mut StackTracker, var_map: &mut HashMap<u8, St
     let pos_shift = 8 - n / 4;
 
     let y = var_map[&y];
-    let x = var_map.get_mut(&x).unwrap();
+    let x = var_map[&x];
 
     for i in pos_shift..pos_shift+8 {
         let n = i % 8;
@@ -38,7 +38,7 @@ pub fn right_rotate_xored(stack: &mut StackTracker, var_map: &mut HashMap<u8, St
 }    
 
 
-pub fn right_rotate7_xored_sub(stack: &mut StackTracker, x : &mut StackVariable, y: StackVariable, tables: &StackTables, n: u8 ) {
+pub fn right_rotate7_xored_sub(stack: &mut StackTracker, x : StackVariable, y: StackVariable, tables: &StackTables, n: u8 ) {
 
     stack.from_altstack();
 
@@ -69,7 +69,7 @@ pub fn right_rotate7_xored(stack: &mut StackTracker, var_map: &mut HashMap<u8, S
     // w = rrot7( z ) = (z6) z7 z0 z1 z2 z3 z4 z5 z6  >> 3
 
     let y = var_map[&y];
-    let x = var_map.get_mut(&x).unwrap();
+    let x = var_map[&x];
 
     // nib 6 xored
 
@@ -111,7 +111,7 @@ pub fn right_rotate7_xored(stack: &mut StackTracker, var_map: &mut HashMap<u8, S
 
 pub fn u4_add_direct( stack: &mut StackTracker, nibble_count: u32, 
             to_copy: Vec<StackVariable>, 
-            mut to_move: Vec<&mut StackVariable>, 
+            to_move: Vec<StackVariable>, 
             mut constants: Vec<u32>, tables: &StackTables) 
 {
 
@@ -140,8 +140,8 @@ pub fn u4_add_direct( stack: &mut StackTracker, nibble_count: u32,
             stack.copy_var_sub_n(*x, i);
         }
 
-        for x in to_move.iter_mut() {
-            stack.move_var_sub_n(x, i);
+        for x in to_move.iter() {
+            stack.move_var_sub_n(*x, i);
         }
 
         for parts in constant_parts.iter() {
@@ -180,18 +180,18 @@ pub fn u4_add_direct( stack: &mut StackTracker, nibble_count: u32,
 
 
 
-pub fn g(stack: &mut StackTracker, var_map: &mut HashMap<u8, StackVariable>, a: u8, b: u8, c:u8, d:u8, mut mx: StackVariable, mut my: StackVariable, tables: &StackTables, last_round: bool ) {
+pub fn g(stack: &mut StackTracker, var_map: &mut HashMap<u8, StackVariable>, a: u8, b: u8, c:u8, d:u8, mx: StackVariable, my: StackVariable, tables: &StackTables, last_round: bool ) {
 
 
     //adds a + b + mx
     //consumes a and mx and copies b
     let vb = var_map[&b];
-    let mut va = var_map.get_mut(&a).unwrap();
+    let va = var_map.get_mut(&a).unwrap();
 
     if last_round {
-        u4_add_direct(stack, 8, vec![vb], vec![&mut va, &mut mx], vec![], tables);
+        u4_add_direct(stack, 8, vec![vb], vec![*va, mx], vec![], tables);
     } else {
-        u4_add_direct(stack, 8, vec![vb, mx], vec![&mut va], vec![], tables);
+        u4_add_direct(stack, 8, vec![vb, mx], vec![*va], vec![], tables);
     }
 
     //stores the results in a
@@ -204,8 +204,8 @@ pub fn g(stack: &mut StackTracker, var_map: &mut HashMap<u8, StackVariable>, a: 
     
 
     let vd = var_map[&d];
-    let mut vc = var_map.get_mut(&c).unwrap();
-    u4_add_direct(stack, 8, vec![vd], vec![&mut vc], vec![], tables);
+    let vc = var_map.get_mut(&c).unwrap();
+    u4_add_direct(stack, 8, vec![vd], vec![*vc], vec![], tables);
     *vc = stack.from_altstack_joined(8, &format!("state_{}",c));
 
 
@@ -214,12 +214,12 @@ pub fn g(stack: &mut StackTracker, var_map: &mut HashMap<u8, StackVariable>, a: 
 
     
     let vb = var_map[&b];
-    let mut va = var_map.get_mut(&a).unwrap();
+    let va = var_map.get_mut(&a).unwrap();
 
     if last_round {
-        u4_add_direct(stack, 8, vec![vb], vec![&mut va, &mut my], vec![], tables);
+        u4_add_direct(stack, 8, vec![vb], vec![*va, my], vec![], tables);
     } else {
-        u4_add_direct(stack, 8, vec![vb, my], vec![&mut va], vec![], tables);
+        u4_add_direct(stack, 8, vec![vb, my], vec![*va], vec![], tables);
     }
 
     *va = stack.from_altstack_joined(8, &format!("state_{}",a));
@@ -230,8 +230,8 @@ pub fn g(stack: &mut StackTracker, var_map: &mut HashMap<u8, StackVariable>, a: 
 
 
     let vd = var_map[&d];
-    let mut vc = var_map.get_mut(&c).unwrap();
-    u4_add_direct(stack, 8, vec![vd], vec![&mut vc], vec![], tables);
+    let vc = var_map.get_mut(&c).unwrap();
+    u4_add_direct(stack, 8, vec![vd], vec![*vc], vec![], tables);
     *vc = stack.from_altstack_joined(8, &format!("state_{}",c));
 
 
@@ -318,7 +318,7 @@ pub fn compress(stack: &mut StackTracker, chaining: bool, counter: u32, block_le
         //iterate nibbles
         for n in 0..8 {
             let v2 = state.get(&(i+8)).unwrap().clone();
-            let v1 = state.get_mut(&i).unwrap();
+            let v1 = state.get(&i).unwrap().clone();
             tmp.push(tables.apply_with_depth(stack, v1, v2, 0, n));
 
 
@@ -354,7 +354,7 @@ pub fn get_flags_for_block(i: u32, num_blocks: u32) -> u32 {
 
 pub fn tables_for_blake3(stack: &mut StackTracker, use_full_tables: bool) -> StackTables {
     StackTables::new()
-        .depth_lookup(stack, use_full_tables)
+        .depth_lookup(stack, use_full_tables, false)
         .operation(stack, &Operation::Xor, use_full_tables)
         .rot_operation(stack, 3, true)
         .addition_operation(stack, 47)
@@ -481,10 +481,10 @@ use super::*;
         var_map.insert(0, x);
         var_map.insert(1, y);
 
-        let mut ret = right_rotate_xored(&mut stack, &mut var_map, 0, 1, 0, &tables);
+        let ret = right_rotate_xored(&mut stack, &mut var_map, 0, 1, 0, &tables);
 
-        let mut val = stack.number_u32(0x99995555 );
-        stack.equals(&mut ret, true, &mut val, true);
+        let val = stack.number_u32(0x99995555 );
+        stack.equals(ret, true,  val, true);
 
         stack.drop(y);
         tables.drop(&mut stack);
@@ -503,13 +503,13 @@ use super::*;
         let mut stack = StackTracker::new();
         let tables = tables_for_blake3(&mut stack, true); 
 
-        let mut x = stack.number_u32(0x00112233);
+        let x = stack.number_u32(0x00112233);
         let y = stack.number_u32(0x99887766);
-        u4_add_direct(&mut stack, 8, vec![y], vec![&mut x], vec![0xaabbccdd],&tables);
+        u4_add_direct(&mut stack, 8, vec![y], vec![x], vec![0xaabbccdd],&tables);
 
-        let mut ret = stack.from_altstack_joined(8, "result");
-        let mut val = stack.number_u32(0x44556676 );
-        stack.equals(&mut ret, true, &mut val, true);
+        let ret = stack.from_altstack_joined(8, "result");
+        let val = stack.number_u32(0x44556676 );
+        stack.equals(ret, true, val, true);
 
         stack.drop(y);
         tables.drop(&mut stack);
@@ -532,15 +532,15 @@ use super::*;
 
         let start = stack.get_script().len();
         let optimized_start = optimize(stack.get_script()).len();
-        let mut result = blake3(&mut stack, 64, 8);
+        let result = blake3(&mut stack, 64, 8);
         let end = stack.get_script().len();
         println!("Blake3 size: {}", end-start);
 
         let end = optimize(stack.get_script()).len();
         println!("Blake3 size: {}", end-optimized_start);
 
-        let mut expected = stack.hexstr_as_nibbles(&hex_out);
-        stack.equals(&mut result, true, &mut expected, true);
+        let expected = stack.hexstr_as_nibbles(&hex_out);
+        stack.equals(result, true, expected, true);
 
 
         stack.op_true();
@@ -563,12 +563,12 @@ use super::*;
         let _ = stack.hexstr_as_nibbles(&hex_in);
 
         let start = stack.get_script().len();
-        let mut result = blake3(&mut stack, 40, 5);
+        let result = blake3(&mut stack, 40, 5);
         let end = stack.get_script().len();
         println!("Blake3 size: {}", end-start);
 
-        let mut expected = stack.hexstr_as_nibbles(&hex_out);
-        stack.equals(&mut result, true, &mut expected, true);
+        let expected = stack.hexstr_as_nibbles(&hex_out);
+        stack.equals(result, true, expected, true);
 
         stack.op_true();
 
@@ -585,12 +585,12 @@ use super::*;
         stack.hexstr_as_nibbles(&hex_in);
 
         let start = stack.get_script().len();
-        let mut result = blake3(&mut stack, repeat*4, 8);
+        let result = blake3(&mut stack, repeat*4, 8);
         let end = stack.get_script().len();
         println!("Blake3 size: {} for: {} bytes", end-start, repeat*4);
 
-        let mut expected = stack.hexstr_as_nibbles(&hex_out);
-        stack.equals(&mut result, true, &mut expected, true);
+        let expected = stack.hexstr_as_nibbles(&hex_out);
+        stack.equals(result, true, expected, true);
 
         stack.op_true();
 

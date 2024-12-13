@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Martin Jonas <martinjonas@gmail.com>"]
 
 [dependencies]
-bitcoin-script-stack = { git = "https://github.com/FairgateLabs/rust-bitcoin-script-stack" }
+bitcoin-script-stack = { git = "https://github.com/FairgateLabs/rust-bitcoin-script-stack", branch="v2" }
 bitcoin-script = { git = "https://github.com/FairgateLabs/rust-bitcoin-script", branch="bitvmx" }
 bitcoin = "0.32.1"
 

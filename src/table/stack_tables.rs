@@ -143,7 +143,7 @@ fn apply_op(stack: &mut StackTracker, op: Option<StackVariableOp>) -> StackVaria
                 if var.copy {
                     stack.copy_var_sub_n(var.var, n)
                 } else {
-                    stack.move_var_sub_n(&mut var.var.clone(), n)
+                    stack.move_var_sub_n(var.var, n)
                 }
             } else {
                 if var.copy {
@@ -187,9 +187,9 @@ impl StackTables {
         Self::default()
     }
     
-    pub fn depth_lookup(mut self, stack: &mut StackTracker, full_table: bool) -> Self {
-        //TODO: FIX -17 for blake  -18 for sha for full lookup
-        self.depth = if full_table { lookup_from_depth(stack, -18) } else { half_lookup_from_depth(stack, -17) };
+    pub fn depth_lookup(mut self, stack: &mut StackTracker, full_table: bool, stack_elements: bool ) -> Self {
+        let delta_for_full_table = if stack_elements { -18 } else { -17 };
+        self.depth = if full_table { lookup_from_depth(stack, delta_for_full_table) } else { half_lookup_from_depth(stack, -17) };
         self.depth_is_full_table = full_table;
         self
     }
@@ -259,58 +259,56 @@ impl StackTables {
         stack.get_var_from_stack(1)
     }
 
-
-    fn apply_with_depth_half(&self, stack: &mut StackTracker, mut x: &mut StackVariable, y: StackVariable, nx: u8, ny: u8 )  -> StackVariable {
-
-        //save two copies of the depth
-        stack.op_depth();
-        stack.op_dup();
-
-        stack.copy_var_sub_n(y, ny as u32);
-        stack.move_var_sub_n(&mut x, nx as u32);
-
+    fn min_max(&self, stack: &mut StackTracker, order: bool) {
         //save the max to altstack
         //get the min
         stack.op_2dup();
-        stack.op_max();
+        if order { 
+            stack.op_max();
+        } else {
+            stack.op_min();
+        }
         stack.to_altstack();
-        stack.op_min();
-
-        //substract from depth the first value and 1 extra
-        stack.op_sub();
-        stack.op_1sub();
-
-        //pick the value from the depth lookup table
-        //the value is negative so it's added to the depth
-        stack.op_pick();
-        stack.op_add();
-        
-        //add the second number to index inside the table
-        stack.from_altstack();
-        stack.op_add();
-        let ret = stack.op_pick();
-        ret
+        if order {
+            stack.op_min();
+        } else {
+            stack.op_max();
+        }
     }
+
 
     //assumes that x[nx] will be consumed and y[ny] will be copied
     //it also asumes that the depth lookup table is on the botom of the stack followed by the binary operation table
-    pub fn apply_with_depth(&self, stack: &mut StackTracker, mut x: &mut StackVariable, y: StackVariable, nx: u8, ny: u8 )  -> StackVariable {
+    pub fn apply_with_depth(&self, stack: &mut StackTracker, x: StackVariable, y: StackVariable, nx: u8, ny: u8 )  -> StackVariable {
 
-        if !self.depth_is_full_table {
-            return self.apply_with_depth_half(stack, x, y, nx, ny);
-        }
+        //if !self.depth_is_full_table {
+        //    return self.apply_with_depth_half(stack, x, y, nx, ny);
+        //}
 
         stack.op_depth();
         stack.op_dup();
 
         stack.copy_var_sub_n(y, ny as u32);
 
-        stack.op_sub();
-        stack.op_pick();
+        if !self.depth_is_full_table {
+            stack.move_var_sub_n(x, nx as u32);
+            self.min_max(stack, true);
+        }
 
+        stack.op_sub();
+
+        if !self.depth_is_full_table {
+            stack.op_1sub();
+        }
+
+        stack.op_pick();
         stack.op_add();
 
-        stack.move_var_sub_n(&mut x, nx as u32);
+        if self.depth_is_full_table {
+            stack.move_var_sub_n(x, nx as u32);
+        } else {
+            stack.from_altstack();
+        }
 
         stack.op_add();
         stack.op_pick()
@@ -319,27 +317,31 @@ impl StackTables {
     //it consumes the two nibbles from the top of the stack 
     pub fn apply_with_depth_stack(&self, stack: &mut StackTracker )  -> StackVariable {
 
+        if !self.depth_is_full_table {
+            self.min_max(stack, false);
+        }
+
         stack.op_depth();
         stack.op_dup();
 
-        //stack.debug();
+        if self.depth_is_full_table {
+            stack.op_rot();
+            stack.op_sub();
+            stack.op_1sub();
+        } else {
+            stack.from_altstack();
+            stack.op_sub();
+        }
 
-        stack.op_rot();
-
-        //stack.debug();
-
-        stack.op_sub();
-        stack.op_1sub();
         stack.op_pick();
 
-        //stack.debug();
 
         stack.op_add();
-        //stack.debug();
         stack.op_add();
-        //stack.debug();
         stack.op_pick()
+
     }
+
 
 
     //assume that if we want to shift two nibbles, the stack will have the two nibbles on the top of the stack
@@ -409,28 +411,33 @@ mod test {
         assert!(stack.run().success);
     }
 
-    fn test_binary(x:u32, y:u32, op:Operation, expected:u32, full_table:bool, depth_lookup: bool) {
+    //test 0: apply
+    //test 1: apply_with_depth
+    //test 2: apply_with_depth_stack
+    fn test_binary(x:u32, y:u32, op:Operation, expected:u32, full_table:bool, test: u8) {
         let mut stack = StackTracker::new();
         let mut tables = StackTables::new();
-        if depth_lookup {
-            tables = tables.depth_lookup(&mut stack, full_table).operation(&mut stack, &op, full_table);
-        } else {
-            tables = tables.lookup(&mut stack, full_table).operation(&mut stack, &op, full_table);
+        match test {
+            0 => tables = tables.lookup(&mut stack, full_table).operation(&mut stack, &op, full_table),
+            1 => tables = tables.depth_lookup(&mut stack, full_table, false).operation(&mut stack, &op, full_table),
+            2 => tables = tables.depth_lookup(&mut stack, full_table, true).operation(&mut stack, &op, full_table),
+            _ => unreachable!(),
         }
 
-        let mut vx = stack.number(x);
+        let vx = stack.number(x);
         let vy = stack.number(y);
 
-        if depth_lookup {
-            tables.apply_with_depth(&mut stack, &mut vx, vy, 0, 0);
-        } else {
-            tables.apply(&mut stack, &op);
+        match test {
+            0 => { tables.apply(&mut stack, &op); },
+            1 => { tables.apply_with_depth(&mut stack, vx, vy, 0, 0); },
+            2 => { tables.apply_with_depth_stack(&mut stack); },
+            _ => unreachable!(),
         }
 
         stack.number(expected);
         stack.op_equalverify();
 
-        if depth_lookup {
+        if test == 1 {
             stack.drop(vy);
         }
 
@@ -440,44 +447,18 @@ mod test {
         assert!(stack.run().success);
     }
 
-    #[test]
-    fn test_depth_with_stack() {
-
-        let mut stack = StackTracker::new();
-        let tables = StackTables::new()
-            .depth_lookup(&mut stack, true).operation(&mut stack, &Operation::Xor, true);
-
-        stack.number(1);
-        stack.number(2);
-
-        stack.debug();
-
-
-        tables.apply_with_depth_stack(&mut stack);
-
-        stack.debug();
-        stack.number(3);
-        stack.op_equalverify();
-
-
-        tables.drop(&mut stack);
-        stack.op_true();
-
-        assert!(stack.run().success);
-
-    }
 
     #[test]
     fn test_binary_ops() {
-        for depth in [true,false] {
+        for test in 0..3 {
             for b in [false,true] {
                 for i in 0..16 {
                     for j in 0..16 {
-                        test_binary(i, j, Operation::And, i & j, b, depth);
-                        test_binary(i, j, Operation::Or, i | j, b, depth);
-                        test_binary(i, j, Operation::Xor, i ^ j, b, depth);
-                        test_binary(i, j, Operation::MulMod, (i * j) % 16, b, depth);
-                        test_binary(i, j, Operation::MulQuotient, (i * j) / 16,b, depth);
+                        test_binary(i, j, Operation::And, i & j, b, test);
+                        test_binary(i, j, Operation::Or, i | j, b, test);
+                        test_binary(i, j, Operation::Xor, i ^ j, b, test);
+                        test_binary(i, j, Operation::MulMod, (i * j) % 16, b, test);
+                        test_binary(i, j, Operation::MulQuotient, (i * j) / 16,b, test);
                     }
                 }
             }

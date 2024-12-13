@@ -25,15 +25,14 @@ const INITSTATE: [u32; 8] = [
 
 fn tables_for_sha256(stack: &mut StackTracker, chunks: u32) -> StackTables {
     let tables = StackTables::new()
-        .depth_lookup(stack, true)
-        .operation(stack, &Operation::Xor, true)
+        .depth_lookup(stack,chunks == 1 , true)
+        .operation(stack, &Operation::Xor, chunks == 1)
         .rot_operation(stack, 1, true)
         .rot_operation(stack, 2, true)
         .rot_operation(stack, 3, true)
-        .operation(stack, &Operation::And, chunks == 1)
-        //.operation(stack, &Operation::Xor, true)
-        .lookup(stack, chunks == 1)
-        .addition_operation(stack, 65);
+        .operation(stack, &Operation::And, false)
+        .lookup(stack, false)
+        .addition_operation(stack, 130);
 
     tables
 }
@@ -291,11 +290,6 @@ pub fn round(stack: &mut StackTracker, r: u32, var_map: &mut HashMap<char, Stack
     replace_and_rename(stack, var_map, 'b', 'a', StackVariable::null());
     replace_and_rename(stack, var_map, 'a', ' ', a);
 
-
-    //println!("{:?}", var_map);  
-
-
-    //stack.debug();
 }
 
 fn replace_and_rename(stack: &mut StackTracker, var_map: &mut HashMap<char, StackVariableOp>, new: char, old: char, var: StackVariable) {
@@ -346,15 +340,6 @@ pub fn sha256(stack: &mut StackTracker, msg_nibbles: u32 ) -> StackVariable {
 
     let tables = tables_for_sha256(stack, chunks);
 
-    //TODO: calculate proper message values [x]
-    //TODO: generate padding with constants [x]
-    //TODO: support more chunks   
-    //TODO: smaller big number add for non expanding part
-    
-
-
-    //let total_words = 
-
     let mut msg_map : HashMap<u32, StackVariableOp> = HashMap::new();
     for i in 0..ready_words {
         msg_map.insert(i, StackVariableOp::new(stack.from_altstack_joined(8, &format!("w[{}]", i)), None, true, None));  
@@ -363,17 +348,6 @@ pub fn sha256(stack: &mut StackTracker, msg_nibbles: u32 ) -> StackVariable {
         msg_map.insert(i, StackVariableOp::new(StackVariable::null(), None, false, Some(0x0)));
     }
     msg_map.insert(total_words-1, StackVariableOp::new(stack.number_u32(msg_nibbles*4), None, true, None));
-
-    stack.debug();
-
-    /*println!("Message nibbles: {}", msg_nibbles);
-    println!("Message nibbles / 2: {}", msg_nibbles / 2);
-    println!("Message nibbles / 2 be: {}", (msg_nibbles / 2).to_be());
-    println!("Message nibbles / 2 be hex: {:0x}", (msg_nibbles / 2).to_be());*/
-    for i in 0..total_words {
-        println!("i:{} {:?}",i, msg_map[&i]);
-    }
-    //return StackVariable::null();   
 
     for chunk in 0..chunks {
 
@@ -398,21 +372,13 @@ pub fn sha256(stack: &mut StackTracker, msg_nibbles: u32 ) -> StackVariable {
 
         }
 
-        stack.debug();
         for i in 0..64 {
-            println!("=======================================================================");
-            println!("============================    {}  ========================================", i);
             round(stack, i, &mut var_map, &mut msg_map_chunk, &tables);
-            //if i == 40 {
-            //    return StackVariable::null();
-        // }
-
         }
 
         for i in (0..8).rev() {
             for nib in (0..8).rev() {
                 //get h_i[nib]
-
                 if chunk == 0 {
                     StackVariableOp::new(StackVariable::null(), Some(nib), false, Some(INITSTATE[i])).access(stack);
                 } else {
@@ -459,36 +425,13 @@ pub fn sha256(stack: &mut StackTracker, msg_nibbles: u32 ) -> StackVariable {
 }
 
 
-pub fn quot_and_modulo_big(stack: &mut StackTracker, number: u32, quot: u32, quotient: bool) {
-
-    stack.op_dup();
-    stack.number(number);
-    stack.op_greaterthanorequal();
-    let (mut if_true, mut if_false) =  stack.open_if();
-    if_true.number(number);
-    if_true.op_sub();   //a - number
-    if quotient {
-        if_true.number(quot);
-        if_false.number(0);
-        stack.end_if(if_true, if_false, 0, vec![(1,"quotient".to_string())], 0);
-    } else {
-        stack.end_if(if_true, if_false, 0, vec![], 0);
-    }
-}
-
 
 pub fn get_quot_and_modulo(stack: &mut StackTracker, tables: &StackTables, quotient: bool) {
 
-    /*quot_and_modulo_big(stack, 0x60, 6, quotient);
+    //quot_and_modulo_big(stack, 0x40, 4, quotient);
 
     if quotient {
-        stack.op_swap(); 
-    }  */ 
-
-    quot_and_modulo_big(stack, 0x40, 4, quotient);
-
-    if quotient {
-        stack.op_swap();   
+        //stack.op_swap();   
         stack.op_dup();
     }
 
@@ -498,10 +441,8 @@ pub fn get_quot_and_modulo(stack: &mut StackTracker, tables: &StackTables, quoti
 
     if quotient {
         tables.apply(stack, &Operation::Quotient(0));
-        stack.op_add();
-        //stack.op_add();
+       // stack.op_add();
     }
-
 
 }
 
@@ -510,12 +451,36 @@ pub fn get_quot_and_modulo(stack: &mut StackTracker, tables: &StackTables, quoti
 
 #[cfg(test)]
 mod tests {
-    use bitcoin_script_stack::stack::StackTracker;
+    use bitcoin_script_stack::{optimizer::optimize, stack::StackTracker};
     use sha2::{Sha256, Digest};
 
     use crate::hash::sha256::sha256;
 
     use super::*;
+
+    fn test_sha_size(bytes: u32) {
+
+        let mut stack = StackTracker::new();
+        stack.number(1);
+        stack.repeat(bytes * 2 - 1);
+        let optimized = optimize(stack.get_script());
+        let start = stack.get_script().len();   
+        let startopt = optimized.len();   
+        let _ = sha256(&mut stack, bytes * 2);
+        let optimized = optimize(stack.get_script());
+        let end = stack.get_script().len();   
+        let endopt = optimized.len();   
+        println!("sha {} bytes: {}", bytes, end - start);
+        println!("sha {} bytes: {}", bytes ,endopt - startopt);
+        println!("max stack: {}", stack.get_max_stack_size());
+    }
+
+
+    #[test]
+    fn test_sizes_tmp() {
+        test_sha_size( 32 );
+        test_sha_size( 80 );
+    }
 
     #[test]
     fn test_be() {
@@ -560,12 +525,10 @@ mod tests {
     #[test]
     fn test_sha256() {
 
-        //let message = "This is a longer message that still fits in one block!";
+        //let message = "This is a longer";// message that still fits in one block!";
         let message = "This is a larger message that will fit in two blocks if I add something else.";
         let msg = hex::encode(message);
-        //let msg = "48656c6c6f20776f";
 
-        //let msg = "deadbeef";
         let expected = get_sha(&msg);
         println!("{}", expected);
 
@@ -574,13 +537,13 @@ mod tests {
         stack.explode(big_msg);
 
         let start = stack.get_script().len();
-        let mut result = sha256(&mut stack, msg.len() as u32);
+        let result = sha256(&mut stack, msg.len() as u32);
         stack.debug();
         let end = stack.get_script().len();
 
-        let mut expected = stack.hexstr_as_nibbles(&expected);
+        let expected = stack.hexstr_as_nibbles(&expected);
 
-        stack.equals(&mut result, true, &mut expected, true);
+        stack.equals(result, true, expected, true);
 
         stack.op_true();
         println!("len: {}", end - start);
@@ -621,15 +584,15 @@ mod tests {
         let tables = tables_for_sha256(&mut stack, 1);
         let number = stack.number_u32(INITSTATE[4]);
         let mut x = stack.number(1);
-        stack.repeat(200);
-        stack.join_count(&mut x, 200);
+        stack.repeat(100);
+        stack.join_count(&mut x, 100);
         
         let start = stack.get_script().len();
-        let mut ret = calculate_s_stack(&mut stack, number, &tables, &vec![6,11,25], false);
+        let ret = calculate_s_stack(&mut stack, number, &tables, &vec![6,11,25], false);
         stack.debug();
         let end = stack.get_script().len();
-        let mut expected = stack.number_u32(0x3587272b);
-        stack.equals(&mut ret, true, &mut expected, true);
+        let expected = stack.number_u32(0x3587272b);
+        stack.equals(ret, true, expected, true);
 
         stack.drop(x);
         stack.drop(number);
@@ -662,15 +625,15 @@ mod tests {
         let f  = stack.number_u32(INITSTATE[5]);
         let g  = stack.number_u32(INITSTATE[6]);
         let mut x = stack.number(1);
-        stack.repeat(200);
-        stack.join_count(&mut x, 200);
+        stack.repeat(100);
+        stack.join_count(&mut x, 100);
         
         let start = stack.get_script().len();
-        let mut ret = ch_calculation_stack(&mut stack, e,f,g, &tables);
+        let ret = ch_calculation_stack(&mut stack, e,f,g, &tables);
         stack.debug();
         let end = stack.get_script().len();
-        let mut expected = stack.number_u32(0x1f85c98c);
-        stack.equals(&mut ret, true, &mut expected, true);
+        let expected = stack.number_u32(0x1f85c98c);
+        stack.equals( ret, true,  expected, true);
 
         stack.drop(x);
         stack.drop(g);
@@ -705,15 +668,15 @@ mod tests {
         let b  = stack.number_u32(INITSTATE[1]);
         let c  = stack.number_u32(INITSTATE[2]);
         let mut x = stack.number(1);
-        stack.repeat(200);
-        stack.join_count(&mut x, 200);
+        stack.repeat(100);
+        stack.join_count(&mut x, 100);
         
         let start = stack.get_script().len();
-        let mut ret = maj_calculation_stack(&mut stack, a,b,c, &tables);
+        let ret = maj_calculation_stack(&mut stack, a,b,c, &tables);
         stack.debug();
         let end = stack.get_script().len();
-        let mut expected = stack.number_u32(0x3a6fe667);
-        stack.equals(&mut ret, true, &mut expected, true);
+        let expected = stack.number_u32(0x3a6fe667);
+        stack.equals(ret, true, expected, true);
 
         stack.drop(x);
         stack.drop(c);
@@ -758,10 +721,10 @@ mod tests {
             for i in 0..8 {
                 rrot_nib_from_u32(&mut stack, &tables, number, i, shift, true);
             }
-            let mut result = stack.join_in_stack(7, 8, Some("shifted"));
-            let mut expected = stack.number_u32(n>>shift);
+            let result = stack.join_in_stack(7, 8, Some("shifted"));
+            let expected = stack.number_u32(n>>shift);
             stack.debug();
-            stack.equals(&mut result, true, &mut expected, true);
+            stack.equals(result, true, expected, true);
 
             stack.drop(number);
         }
@@ -786,26 +749,26 @@ mod tests {
         let mut stack = StackTracker::new();
 
         complete_word(&mut stack, 8);
-        let mut a = stack.join_in_stack(7, 8, Some("word"));
-        let mut b= stack.number_u32(0x80000000);
-        stack.equals(&mut a, true,  &mut b, true);
+        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  b= stack.number_u32(0x80000000);
+        stack.equals( a, true,   b, true);
 
 
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 2);
-        let mut a = stack.join_in_stack(7, 8, Some("word"));
-        let mut b= stack.number_u32(0x00800000);
-        stack.equals(&mut a, true,  &mut b, true);
+        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  b= stack.number_u32(0x00800000);
+        stack.equals( a, true,   b, true);
 
         stack.number(0);
         stack.number(0);
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 4);
-        let mut a = stack.join_in_stack(7, 8, Some("word"));
-        let mut b= stack.number_u32(0x00008000);
-        stack.equals(&mut a, true,  &mut b, true);
+        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  b= stack.number_u32(0x00008000);
+        stack.equals( a, true,   b, true);
 
         stack.number(0);
         stack.number(0);
@@ -814,9 +777,9 @@ mod tests {
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 6);
-        let mut a = stack.join_in_stack(7, 8, Some("word"));
-        let mut b= stack.number_u32(0x00000080);
-        stack.equals(&mut a, true,  &mut b, true);
+        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  b= stack.number_u32(0x00000080);
+        stack.equals( a, true,   b, true);
 
         stack.number(0);
         stack.number(0);
@@ -826,9 +789,9 @@ mod tests {
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 7);
-        let mut a = stack.join_in_stack(7, 8, Some("word"));
-        let mut b= stack.number_u32(0x00000008);
-        stack.equals(&mut a, true,  &mut b, true);
+        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  b= stack.number_u32(0x00000008);
+        stack.equals( a, true,   b, true);
 
         stack.op_true();
         assert!(stack.run().success);
