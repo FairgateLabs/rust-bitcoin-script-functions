@@ -6,7 +6,7 @@ fn lookup_from_depth(stack: &mut StackTracker, delta: i32) -> StackVariable {
     for i in (0..16).rev() {
         stack.numberi((i+1) * -16 + delta);
     }
-    stack.join_in_stack(15, 16, Some("lookup_depth"))
+    stack.join_in_stack(16, None, Some("lookup_depth"))
 }
 
 fn half_lookup_from_depth(stack: &mut StackTracker, delta: i32) -> StackVariable {
@@ -15,14 +15,14 @@ fn half_lookup_from_depth(stack: &mut StackTracker, delta: i32) -> StackVariable
         let value =  -diff + delta;
         stack.numberi(value);
     }
-    stack.join_in_stack(15, 16, Some("half_lookup_depth"))
+    stack.join_in_stack(16, None, Some("half_lookup_depth"))
 }
 
 fn lookup(stack: &mut StackTracker) -> StackVariable {
     for i in (0..16).rev() {
         stack.numberi(i * 16 );
     }
-    stack.join_in_stack(15, 16, Some("lookup"))
+    stack.join_in_stack(16, None, Some("lookup"))
 }
 
 fn half_lookup(stack: &mut StackTracker) -> StackVariable {
@@ -82,7 +82,7 @@ fn unary_operation_table(stack: &mut StackTracker, op: &Operation) -> StackVaria
 
     }
 
-    stack.join_in_stack(max-1, max, Some(&format!("op_{:?}", op)))
+    stack.join_in_stack(max, None, Some(&format!("op_{:?}", op)))
 }
 
 fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: bool) -> StackVariable {
@@ -103,7 +103,7 @@ fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: 
         }
     }
     let total_size = if full_table { 256 } else { 136 };
-    stack.join_in_stack(total_size-1, total_size, Some(&format!("op_{:?}", op)))
+    stack.join_in_stack(total_size, None, Some(&format!("op_{:?}", op)))
 }
 
 #[derive(Clone, Debug)]
@@ -255,8 +255,8 @@ impl StackTables {
             stack.get_value_from_table(self.lookup, None);
             stack.op_add();
         }
-        stack.get_value_from_table(*self.get_operation_table(&op), None);
-        stack.get_var_from_stack(1)
+        stack.get_value_from_table(*self.get_operation_table(&op), None)
+        //stack.get_var_from_stack(1)
     }
 
     fn min_max(&self, stack: &mut StackTracker, order: bool) {

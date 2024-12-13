@@ -275,7 +275,7 @@ pub fn round(stack: &mut StackTracker, r: u32, var_map: &mut HashMap<char, Stack
     }
 
 
-    let e = stack.join_in_stack(7, 8, Some("e"));
+    let e = stack.join_in_stack(8, None, Some("e"));
     stack.reverse_u32(e);
 
 
@@ -575,7 +575,7 @@ mod tests {
         for nib in 0..8 {
             calculate_s_stack_nib(stack, number, tables, shift_value, last_is_shift, nib);
         }
-        stack.join_in_stack(7, 8, Some("s"))
+        stack.join_in_stack(8, None, Some("s"))
     }
 
     #[test]
@@ -613,7 +613,7 @@ mod tests {
 
             ch_calculation_stack_nib(stack, ope, opf, opg, tables, nib);
         }
-        stack.join_in_stack(7, 8, Some("ch"))
+        stack.join_in_stack(8, None, Some("ch"))
 
     }
 
@@ -656,7 +656,7 @@ mod tests {
             let opc = StackVariableOp::new(c, Some(nib), true, None);
             maj_calculation_stack_nib(stack, opa, opb, opc, tables, nib);
         }
-        stack.join_in_stack(7, 8, Some("maj"))
+        stack.join_in_stack(8, None, Some("maj"))
 
     }
 
@@ -721,7 +721,7 @@ mod tests {
             for i in 0..8 {
                 rrot_nib_from_u32(&mut stack, &tables, number, i, shift, true);
             }
-            let result = stack.join_in_stack(7, 8, Some("shifted"));
+            let result = stack.join_in_stack(8,None, Some("shifted"));
             let expected = stack.number_u32(n>>shift);
             stack.debug();
             stack.equals(result, true, expected, true);
@@ -749,7 +749,7 @@ mod tests {
         let mut stack = StackTracker::new();
 
         complete_word(&mut stack, 8);
-        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  a = stack.join_in_stack(8, None, Some("word"));
         let  b= stack.number_u32(0x80000000);
         stack.equals( a, true,   b, true);
 
@@ -757,7 +757,7 @@ mod tests {
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 2);
-        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  a = stack.join_in_stack(8, None, Some("word"));
         let  b= stack.number_u32(0x00800000);
         stack.equals( a, true,   b, true);
 
@@ -766,7 +766,7 @@ mod tests {
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 4);
-        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  a = stack.join_in_stack(8, None, Some("word"));
         let  b= stack.number_u32(0x00008000);
         stack.equals( a, true,   b, true);
 
@@ -777,7 +777,7 @@ mod tests {
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 6);
-        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  a = stack.join_in_stack(8, None, Some("word"));
         let  b= stack.number_u32(0x00000080);
         stack.equals( a, true,   b, true);
 
@@ -789,7 +789,7 @@ mod tests {
         stack.number(0);
         stack.number(0);
         complete_word(&mut stack, 7);
-        let  a = stack.join_in_stack(7, 8, Some("word"));
+        let  a = stack.join_in_stack(8, None, Some("word"));
         let  b= stack.number_u32(0x00000008);
         stack.equals( a, true,   b, true);
 

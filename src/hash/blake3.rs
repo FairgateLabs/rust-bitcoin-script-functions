@@ -33,7 +33,7 @@ pub fn right_rotate_xored(stack: &mut StackTracker, var_map: &mut HashMap<u8, St
         tables.apply_with_depth(stack, x, y, z, n);
     }
 
-    stack.join_in_stack(7, 8, Some("right_rotated_xored"))
+    stack.join_in_stack(8, None, Some("right_rotated_xored"))
 
 }    
 
@@ -439,7 +439,7 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
 
         //drop the rest of the state
         for _ in 0..16-intermediate_rounds {
-            stack.drop(stack.get_var_from_stack(0));
+            stack.drop_var();
         }
 
     }
