@@ -2,6 +2,8 @@ use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 
 use crate::util::sort;
 
+use super::stack_variable_op::StackVariableOp;
+
 fn lookup_from_depth(stack: &mut StackTracker, delta: i32) -> StackVariable {
     for i in (0..16).rev() {
         stack.numberi((i+1) * -16 + delta);
@@ -105,59 +107,6 @@ fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: 
     let total_size = if full_table { 256 } else { 136 };
     stack.join_in_stack(total_size, None, Some(&format!("op_{:?}", op)))
 }
-
-#[derive(Clone, Debug)]
-pub struct StackVariableOp {
-    pub var: StackVariable,
-    pub n: Option<u32>,
-    pub copy: bool,
-    pub constant: Option<u32>,
-}
-
-impl StackVariableOp {
-    pub fn new(var: StackVariable, n: Option<u32>, copy: bool, constant: Option<u32>) -> Self {
-        Self {
-            var,
-            n,
-            copy,
-            constant,
-        }
-    }
-
-    pub fn access(&self, stack: &mut StackTracker) -> StackVariable {
-        apply_op(stack, Some(self.clone()))
-    }
-
-}
-
-fn apply_op(stack: &mut StackTracker, op: Option<StackVariableOp>) -> StackVariable {
-    if let Some(var) = op {
-        if let Some(c) = var.constant {
-            if let Some(n) = var.n {
-                stack.number((c >> (4 * (7-n))) & 0xf)
-            } else {
-                stack.number_u32(c)
-            }
-        } else {
-            if let Some(n) = var.n {
-                if var.copy {
-                    stack.copy_var_sub_n(var.var, n)
-                } else {
-                    stack.move_var_sub_n(var.var, n)
-                }
-            } else {
-                if var.copy {
-                    stack.copy_var(var.var)
-                } else {
-                    stack.move_var(var.var)
-                }
-            }
-        }
-    } else {
-        StackVariable::null()
-    }
-}
-
 
 
 
@@ -355,7 +304,7 @@ impl StackTables {
 
         stack.get_value_from_table(*self.get_operation_table(&op), None);
         if var_op.is_some() {
-            apply_op(stack, var_op);
+            var_op.unwrap().access(stack);
         } else {
             stack.op_swap();
         }
@@ -491,8 +440,8 @@ mod test {
 
                         let varx = stack.number(x);
                         stack.number(y);
-                        let var_op = StackVariableOp::new(varx, None, false, None);
-                        tables.apply_shift_two_nibbles(&mut stack, j, right, Some(var_op));
+                        let var_op : StackVariableOp = varx.into();
+                        tables.apply_shift_two_nibbles(&mut stack, j, right, Some(var_op.set_move()));
 
                         let result = x * 16 + y;
                         let result = if right {

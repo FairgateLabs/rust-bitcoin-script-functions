@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 
-use crate::table::stack_tables::{Operation, StackTables, StackVariableOp};
+use crate::table::{stack_tables::{Operation, StackTables}, stack_variable_op::StackVariableOp};
 
 
 
@@ -57,7 +57,7 @@ pub fn rrot_nib_from_u32(stack: &mut StackTracker, tables: &StackTables, number:
         tables.apply(stack, &Operation::RShift(bit_shift))
     } else {
         stack.copy_var_sub_n(number, x);
-        tables.apply_shift_two_nibbles(stack, bit_shift, true, Some(StackVariableOp::new(number, Some(y), true, None)))
+        tables.apply_shift_two_nibbles(stack, bit_shift, true, Some(StackVariableOp::new(number, Some(y), true)))
     }
 
 }
@@ -110,47 +110,39 @@ pub fn calculate_s_nib_var_op( stack: &mut StackTracker,
 }
 
 
-pub fn ch_calculation_stack_nib(stack: &mut StackTracker, mut e: StackVariableOp, mut f:StackVariableOp, mut g:StackVariableOp, tables: &StackTables, nib: u32) -> StackVariable {
+pub fn ch_calculation_stack_nib(stack: &mut StackTracker, e: StackVariableOp, f:StackVariableOp, g:StackVariableOp, tables: &StackTables, nib: u32) -> StackVariable {
 
-    e.n = Some(nib);
-    f.n = Some(nib);
-    g.n = Some(nib);
-
-    e.access(stack);        // e[nib]
+    e.set_n(nib).access(stack);        // e[nib]
     stack.op_dup();                        // e e
 
     stack.op_negate();                     // e ~e
     stack.number(15);
     stack.op_add();
 
-    g.access(stack);    // e ~e g[nib]
+    g.set_n(nib).access(stack);    // e ~e g[nib]
 
     tables.apply(stack, &Operation::And); // e ( ~e & g )
     
     stack.op_swap();                       // ( ~e & g ) e
 
-    f.access(stack);   // ( ~e & g ) e f[nib]
+    f.set_n(nib).access(stack);   // ( ~e & g ) e f[nib]
 
     tables.apply(stack, &Operation::And); // ( ~e & g ) (e & f)
     tables.apply_with_depth_stack(stack) // ( ~e & g ) (e & f)
 }
 
 
-pub fn maj_calculation_stack_nib(stack: &mut StackTracker, mut a: StackVariableOp, mut b:StackVariableOp, mut c:StackVariableOp, tables: &StackTables, nib: u32) -> StackVariable {
+pub fn maj_calculation_stack_nib(stack: &mut StackTracker, a: StackVariableOp, b:StackVariableOp, c:StackVariableOp, tables: &StackTables, nib: u32) -> StackVariable {
 
-    a.n = Some(nib);
-    b.n = Some(nib);
-    c.n = Some(nib);
+    a.set_n(nib).access(stack);              // a[nib]
 
-    a.access(stack);              // a[nib]
-
-    b.access(stack);              // a b[nib]
+    b.set_n(nib).access(stack);              // a b[nib]
 
     stack.op_2dup();                                  // a b a b
 
     tables.apply_with_depth_stack(stack);           // a b (a^b)
 
-    c.access(stack);                     // a b (a^b) c
+    c.set_n(nib).access(stack);                     // a b (a^b) c
 
     tables.apply(stack, &Operation::And); // a b ((a^b) & c)
 
@@ -209,7 +201,7 @@ pub fn round(stack: &mut StackTracker, r: u32, var_map: &mut HashMap<char, Stack
 
     if r >= 16 {
         let w = compute_w(stack, r, msg_map, tables);
-        msg_map.insert(r, StackVariableOp::new(w, None, true, None));
+        msg_map.insert(r, w.into());
     }
 
 
@@ -218,11 +210,11 @@ pub fn round(stack: &mut StackTracker, r: u32, var_map: &mut HashMap<char, Stack
         let a = var_map.get(&'a').cloned().unwrap();
         let b = var_map.get(&'b').cloned().unwrap();
         let c = var_map.get(&'c').cloned().unwrap();
-        let mut d = var_map.get(&'d').cloned().unwrap();
+        let d = var_map.get(&'d').cloned().unwrap();
         let e = var_map.get(&'e').cloned().unwrap();
         let f = var_map.get(&'f').cloned().unwrap();
         let g = var_map.get(&'g').cloned().unwrap();
-        let mut h = var_map.get(&'h').cloned().unwrap();
+        let h = var_map.get(&'h').cloned().unwrap();
         let _s0 = calculate_s_nib_var_op(stack, &tables, a.clone(), &vec![2,13,22], false, nib);
         let _maj = maj_calculation_stack_nib(stack, a, b, c, &tables, nib);
         stack.op_add(); //s0 + maj
@@ -230,10 +222,8 @@ pub fn round(stack: &mut StackTracker, r: u32, var_map: &mut HashMap<char, Stack
 
         let _s1 = calculate_s_nib_var_op(stack, &tables, e.clone(), &vec![6,11,25], false, nib);
         let _ch = ch_calculation_stack_nib(stack, e, f, g, &tables, nib);
-        h.n = Some(nib);
-        h.copy = false;
-        h.access(stack);
-        StackVariableOp::new(StackVariable::null(),Some(nib), false, Some(K[r as usize])).access(stack);
+        h.set_n(nib).set_move().access(stack);
+        StackVariableOp::new_constant(K[r as usize]).set_n(nib).access(stack);
 
         stack.op_add(); //s1 + ch
         stack.op_add(); // s1 + ch + h[nib]
@@ -259,9 +249,7 @@ pub fn round(stack: &mut StackTracker, r: u32, var_map: &mut HashMap<char, Stack
             stack.to_altstack();
         } 
 
-        d.n = Some(nib);    //temp1 d[nib]  | a[nib]
-        d.copy = false;
-        d.access(stack);    
+        d.set_n(nib).set_move().access(stack); //temp1 d[nib]  | a[nib]
         stack.op_add();     //e[nib]       | a[nib]
 
         if nib < 7 {
@@ -300,7 +288,7 @@ fn replace_and_rename(stack: &mut StackTracker, var_map: &mut HashMap<char, Stac
         }
         var_map.insert(new, old_var);
     } else {
-        var_map.insert(new, StackVariableOp::new(var, None, true, None));
+        var_map.insert(new, var.into());
     }
 }
 
@@ -342,12 +330,12 @@ pub fn sha256(stack: &mut StackTracker, msg_nibbles: u32 ) -> StackVariable {
 
     let mut msg_map : HashMap<u32, StackVariableOp> = HashMap::new();
     for i in 0..ready_words {
-        msg_map.insert(i, StackVariableOp::new(stack.from_altstack_joined(8, &format!("w[{}]", i)), None, true, None));  
+        msg_map.insert(i, stack.from_altstack_joined(8, &format!("w[{}]", i)).into());
     }
     for i in ready_words..(total_words-1) {
-        msg_map.insert(i, StackVariableOp::new(StackVariable::null(), None, false, Some(0x0)));
+        msg_map.insert(i, 0.into());
     }
-    msg_map.insert(total_words-1, StackVariableOp::new(stack.number_u32(msg_nibbles*4), None, true, None));
+    msg_map.insert(total_words-1, stack.number_u32(msg_nibbles*4).into());
 
     for chunk in 0..chunks {
 
@@ -358,13 +346,13 @@ pub fn sha256(stack: &mut StackTracker, msg_nibbles: u32 ) -> StackVariable {
 
         if chunk == 0 {
             for i in 0..8 {
-                var_map.insert(INITSTATE_MAPPING[i],  StackVariableOp::new(StackVariable::null(), None, false, Some(INITSTATE[i])) );
+                var_map.insert(INITSTATE_MAPPING[i],  INITSTATE[i].into() );
             }
         } else {
             for i in 0..8 {
                 let var = stack.from_altstack_joined(8, &format!("h[{}]", i)) ; 
-                var_map.insert(INITSTATE_MAPPING[i],  StackVariableOp::new(var , None, true, None) );
-                orig_map.insert(INITSTATE_MAPPING[i], StackVariableOp::new(stack.copy_var(var), None, true, None) );
+                var_map.insert(INITSTATE_MAPPING[i],  var.into() );
+                orig_map.insert(INITSTATE_MAPPING[i], stack.copy_var(var).into());
             }
             for i in 0..16 {
                 msg_map_chunk.insert(i,  msg_map_chunk.get(&(i+16)).cloned().unwrap() );
@@ -380,7 +368,7 @@ pub fn sha256(stack: &mut StackTracker, msg_nibbles: u32 ) -> StackVariable {
             for nib in (0..8).rev() {
                 //get h_i[nib]
                 if chunk == 0 {
-                    StackVariableOp::new(StackVariable::null(), Some(nib), false, Some(INITSTATE[i])).access(stack);
+                    StackVariableOp::new_constant(INITSTATE[i]).set_n(nib).access(stack);
                 } else {
                     let mut x = orig_map.get(&INITSTATE_MAPPING[i]).cloned().unwrap();
                     x.n = Some(nib);
@@ -607,11 +595,7 @@ mod tests {
 
     fn ch_calculation_stack(stack: &mut StackTracker, e: StackVariable, f:StackVariable, g:StackVariable, tables: &StackTables) -> StackVariable {
         for nib in 0..8 {
-            let ope = StackVariableOp::new(e, Some(nib), true, None);
-            let opf = StackVariableOp::new(f, Some(nib), true, None);
-            let opg = StackVariableOp::new(g, Some(nib), true, None);
-
-            ch_calculation_stack_nib(stack, ope, opf, opg, tables, nib);
+            ch_calculation_stack_nib(stack, e.into(), f.into(), g.into(), tables, nib);
         }
         stack.join_in_stack(8, None, Some("ch"))
 
@@ -651,10 +635,7 @@ mod tests {
     fn maj_calculation_stack(stack: &mut StackTracker, a: StackVariable, b:StackVariable, c:StackVariable, tables: &StackTables) -> StackVariable {
 
         for nib in 0..8 {
-            let opa = StackVariableOp::new(a, Some(nib), true, None);
-            let opb = StackVariableOp::new(b, Some(nib), true, None);
-            let opc = StackVariableOp::new(c, Some(nib), true, None);
-            maj_calculation_stack_nib(stack, opa, opb, opc, tables, nib);
+            maj_calculation_stack_nib(stack, a.into(), b.into(), c.into(), tables, nib);
         }
         stack.join_in_stack(8, None, Some("maj"))
 
