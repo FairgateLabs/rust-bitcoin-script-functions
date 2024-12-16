@@ -357,7 +357,7 @@ pub fn tables_for_blake3(stack: &mut StackTracker, use_full_tables: bool) -> Sta
         .depth_lookup(stack, use_full_tables, false)
         .operation(stack, &Operation::Xor, use_full_tables)
         .rot_operation(stack, 3, true)
-        .addition_operation(stack, 47)
+        .addition_operation(stack, 48)
 }
 
 // final rounds: 8 => 32 bytes hash
