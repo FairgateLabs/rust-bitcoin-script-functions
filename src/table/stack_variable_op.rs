@@ -1,6 +1,5 @@
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 
-
 #[derive(Clone, Debug)]
 pub struct StackVariableOp {
     pub var: StackVariable,
@@ -27,12 +26,10 @@ impl Into<StackVariable> for StackVariableOp {
     }
 }
 
-
 impl StackVariableOp {
-
     pub fn new_constant(constant: u32) -> Self {
         Self {
-            var : StackVariable::null(),
+            var: StackVariable::null(),
             n: None,
             copy: true,
             constant: Some(constant),
@@ -56,7 +53,6 @@ impl StackVariableOp {
             constant: None,
         }
     }
-
 
     pub fn null() -> Self {
         Self::new_var(StackVariable::null())
@@ -87,14 +83,13 @@ impl StackVariableOp {
     pub fn access(&self, stack: &mut StackTracker) -> StackVariable {
         apply_op(stack, Some(self.clone()))
     }
-
 }
 
 fn apply_op(stack: &mut StackTracker, op: Option<StackVariableOp>) -> StackVariable {
     if let Some(var) = op {
         if let Some(c) = var.constant {
             if let Some(n) = var.n {
-                stack.number((c >> (4 * (7-n))) & 0xf)
+                stack.number((c >> (4 * (7 - n))) & 0xf)
             } else {
                 stack.number_u32(c)
             }
@@ -117,4 +112,3 @@ fn apply_op(stack: &mut StackTracker, op: Option<StackVariableOp>) -> StackVaria
         StackVariable::null()
     }
 }
-

@@ -6,15 +6,15 @@ use super::stack_variable_op::StackVariableOp;
 
 fn lookup_from_depth(stack: &mut StackTracker, delta: i32) -> StackVariable {
     for i in (0..16).rev() {
-        stack.numberi((i+1) * -16 + delta);
+        stack.numberi((i + 1) * -16 + delta);
     }
     stack.join_in_stack(16, None, Some("lookup_depth"))
 }
 
 fn half_lookup_from_depth(stack: &mut StackTracker, delta: i32) -> StackVariable {
     for i in 0..16 {
-        let diff = ((16-i) * (16-i+1))/2 + i;
-        let value =  -diff + delta;
+        let diff = ((16 - i) * (16 - i + 1)) / 2 + i;
+        let value = -diff + delta;
         stack.numberi(value);
     }
     stack.join_in_stack(16, None, Some("half_lookup_depth"))
@@ -22,7 +22,7 @@ fn half_lookup_from_depth(stack: &mut StackTracker, delta: i32) -> StackVariable
 
 fn lookup(stack: &mut StackTracker) -> StackVariable {
     for i in (0..16).rev() {
-        stack.numberi(i * 16 );
+        stack.numberi(i * 16);
     }
     stack.join_in_stack(16, None, Some("lookup"))
 }
@@ -35,7 +35,11 @@ fn half_lookup(stack: &mut StackTracker) -> StackVariable {
         prev = 16 + prev - i;
         parts.push(prev);
     }
-    let mut parts = parts.iter().rev().map(|x| stack.number(*x)).collect::<Vec<_>>();
+    let mut parts = parts
+        .iter()
+        .rev()
+        .map(|x| stack.number(*x))
+        .collect::<Vec<_>>();
     stack.rename(parts[0], "half_lookup");
     stack.join_count(&mut parts[0], 15)
 }
@@ -59,7 +63,10 @@ pub enum Operation {
 impl Operation {
     pub fn is_unary(&self) -> bool {
         match self {
-            Operation::LShift(_) | Operation::RShift(_) | Operation::Modulo(_) | Operation::Quotient(_) => true,
+            Operation::LShift(_)
+            | Operation::RShift(_)
+            | Operation::Modulo(_)
+            | Operation::Quotient(_) => true,
             _ => false,
         }
     }
@@ -67,8 +74,7 @@ impl Operation {
 
 fn unary_operation_table(stack: &mut StackTracker, op: &Operation) -> StackVariable {
     let max = match op {
-        Operation::Quotient(max) |
-        Operation::Modulo(max) => *max,
+        Operation::Quotient(max) | Operation::Modulo(max) => *max,
         _ => 16,
     };
 
@@ -81,13 +87,16 @@ fn unary_operation_table(stack: &mut StackTracker, op: &Operation) -> StackVaria
             _ => unreachable!(),
         };
         stack.number(number as u32);
-
     }
 
     stack.join_in_stack(max, None, Some(&format!("op_{:?}", op)))
 }
 
-fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: bool) -> StackVariable {
+fn binary_operation_table(
+    stack: &mut StackTracker,
+    op: &Operation,
+    full_table: bool,
+) -> StackVariable {
     for n in (0..16).rev() {
         let x = if full_table { 0 } else { n };
         for i in (x..16).rev() {
@@ -98,7 +107,6 @@ fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: 
                 Operation::MulMod => (i * n) % 16,
                 Operation::MulQuotient => (i * n) / 16,
                 _ => unreachable!(),
-
             };
             //println!("n: {}, i: {}, number: {}", n, i, number);
             stack.number(number);
@@ -107,8 +115,6 @@ fn binary_operation_table(stack: &mut StackTracker, op: &Operation, full_table: 
     let total_size = if full_table { 256 } else { 136 };
     stack.join_in_stack(total_size, None, Some(&format!("op_{:?}", op)))
 }
-
-
 
 #[derive(Debug, Default)]
 pub struct StackTables {
@@ -131,20 +137,32 @@ pub struct StackTables {
 }
 
 impl StackTables {
-
     pub fn new() -> Self {
         Self::default()
     }
-    
-    pub fn depth_lookup(mut self, stack: &mut StackTracker, full_table: bool, stack_elements: bool ) -> Self {
+
+    pub fn depth_lookup(
+        mut self,
+        stack: &mut StackTracker,
+        full_table: bool,
+        stack_elements: bool,
+    ) -> Self {
         let delta_for_full_table = if stack_elements { -18 } else { -17 };
-        self.depth = if full_table { lookup_from_depth(stack, delta_for_full_table) } else { half_lookup_from_depth(stack, -17) };
+        self.depth = if full_table {
+            lookup_from_depth(stack, delta_for_full_table)
+        } else {
+            half_lookup_from_depth(stack, -17)
+        };
         self.depth_is_full_table = full_table;
         self
     }
 
     pub fn lookup(mut self, stack: &mut StackTracker, full_table: bool) -> Self {
-        self.lookup = if full_table { lookup(stack) } else { half_lookup(stack) };
+        self.lookup = if full_table {
+            lookup(stack)
+        } else {
+            half_lookup(stack)
+        };
         self.lookup_is_full_table = full_table;
         self
     }
@@ -155,7 +173,9 @@ impl StackTables {
             &Operation::Or => self.or = binary_operation_table(stack, op, full_table),
             &Operation::Xor => self.xor = binary_operation_table(stack, op, full_table),
             &Operation::MulMod => self.mul_mod = binary_operation_table(stack, op, full_table),
-            &Operation::MulQuotient => self.mul_quotient = binary_operation_table(stack, op, full_table),
+            &Operation::MulQuotient => {
+                self.mul_quotient = binary_operation_table(stack, op, full_table)
+            }
             &Operation::Modulo(_) => self.modulo = unary_operation_table(stack, op),
             &Operation::Quotient(_) => self.quotient = unary_operation_table(stack, op),
             &Operation::LShift(n) => self.lshift[n as usize] = unary_operation_table(stack, op),
@@ -167,7 +187,7 @@ impl StackTables {
     pub fn rot_operation(self, stack: &mut StackTracker, n: u8, right: bool) -> Self {
         assert!(n < 5);
         let npos = n;
-        let ncomplement = 4-n;
+        let ncomplement = 4 - n;
         let nright = if right { npos } else { ncomplement };
         let nleft = if right { ncomplement } else { npos };
         self.operation(stack, &Operation::RShift(nright), false)
@@ -192,7 +212,7 @@ impl StackTables {
             &Operation::RShift(n) => &self.rshift[n as usize],
         }
     }
-   
+
     pub fn apply(&self, stack: &mut StackTracker, op: &Operation) -> StackVariable {
         let is_binary = !op.is_unary();
 
@@ -212,7 +232,7 @@ impl StackTables {
         //save the max to altstack
         //get the min
         stack.op_2dup();
-        if order { 
+        if order {
             stack.op_max();
         } else {
             stack.op_min();
@@ -225,11 +245,16 @@ impl StackTables {
         }
     }
 
-
     //assumes that x[nx] will be consumed and y[ny] will be copied
     //it also asumes that the depth lookup table is on the botom of the stack followed by the binary operation table
-    pub fn apply_with_depth(&self, stack: &mut StackTracker, x: StackVariable, y: StackVariable, nx: u8, ny: u8 )  -> StackVariable {
-
+    pub fn apply_with_depth(
+        &self,
+        stack: &mut StackTracker,
+        x: StackVariable,
+        y: StackVariable,
+        nx: u8,
+        ny: u8,
+    ) -> StackVariable {
         //if !self.depth_is_full_table {
         //    return self.apply_with_depth_half(stack, x, y, nx, ny);
         //}
@@ -263,9 +288,8 @@ impl StackTables {
         stack.op_pick()
     }
 
-    //it consumes the two nibbles from the top of the stack 
-    pub fn apply_with_depth_stack(&self, stack: &mut StackTracker )  -> StackVariable {
-
+    //it consumes the two nibbles from the top of the stack
+    pub fn apply_with_depth_stack(&self, stack: &mut StackTracker) -> StackVariable {
         if !self.depth_is_full_table {
             self.min_max(stack, false);
         }
@@ -284,23 +308,33 @@ impl StackTables {
 
         stack.op_pick();
 
-
         stack.op_add();
         stack.op_add();
         stack.op_pick()
-
     }
-
-
 
     //assume that if we want to shift two nibbles, the stack will have the two nibbles on the top of the stack
     //to the top will be applied the shift and to the second from the top will be applied the complement
     //then the result is added
-    pub fn apply_shift_two_nibbles(&self, stack: &mut StackTracker, n:u8, right: bool, var_op: Option<StackVariableOp>) -> StackVariable {
+    pub fn apply_shift_two_nibbles(
+        &self,
+        stack: &mut StackTracker,
+        n: u8,
+        right: bool,
+        var_op: Option<StackVariableOp>,
+    ) -> StackVariable {
         let npos = n;
-        let ncomplement = 4-n;
-        let op = if right { Operation::RShift(npos) } else { Operation::RShift(ncomplement) };
-        let opcomplement = if right { Operation::LShift(ncomplement) } else { Operation::LShift(npos) };
+        let ncomplement = 4 - n;
+        let op = if right {
+            Operation::RShift(npos)
+        } else {
+            Operation::RShift(ncomplement)
+        };
+        let opcomplement = if right {
+            Operation::LShift(ncomplement)
+        } else {
+            Operation::LShift(npos)
+        };
 
         stack.get_value_from_table(*self.get_operation_table(&op), None);
         if var_op.is_some() {
@@ -313,8 +347,6 @@ impl StackTables {
         stack.rename(ret, &format!("shift_two_nibbles_{}", n));
         ret
     }
-
-
 
     pub fn drop(self, stack: &mut StackTracker) {
         let mut tables = vec![
@@ -332,20 +364,18 @@ impl StackTables {
             tables.push(self.lshift[i]);
             tables.push(self.rshift[i]);
         }
-        tables.retain( |x| !x.is_null());
+        tables.retain(|x| !x.is_null());
 
         stack.drop_list(tables);
     }
-
 }
-
 
 #[cfg(test)]
 mod test {
 
     use super::*;
 
-    fn test_unary(x:u32, op:Operation, expected:u32) {
+    fn test_unary(x: u32, op: Operation, expected: u32) {
         let mut stack = StackTracker::new();
         let tables = StackTables::new().operation(&mut stack, &op, false);
 
@@ -363,13 +393,25 @@ mod test {
     //test 0: apply
     //test 1: apply_with_depth
     //test 2: apply_with_depth_stack
-    fn test_binary(x:u32, y:u32, op:Operation, expected:u32, full_table:bool, test: u8) {
+    fn test_binary(x: u32, y: u32, op: Operation, expected: u32, full_table: bool, test: u8) {
         let mut stack = StackTracker::new();
         let mut tables = StackTables::new();
         match test {
-            0 => tables = tables.lookup(&mut stack, full_table).operation(&mut stack, &op, full_table),
-            1 => tables = tables.depth_lookup(&mut stack, full_table, false).operation(&mut stack, &op, full_table),
-            2 => tables = tables.depth_lookup(&mut stack, full_table, true).operation(&mut stack, &op, full_table),
+            0 => {
+                tables = tables
+                    .lookup(&mut stack, full_table)
+                    .operation(&mut stack, &op, full_table)
+            }
+            1 => {
+                tables = tables
+                    .depth_lookup(&mut stack, full_table, false)
+                    .operation(&mut stack, &op, full_table)
+            }
+            2 => {
+                tables = tables
+                    .depth_lookup(&mut stack, full_table, true)
+                    .operation(&mut stack, &op, full_table)
+            }
             _ => unreachable!(),
         }
 
@@ -377,9 +419,15 @@ mod test {
         let vy = stack.number(y);
 
         match test {
-            0 => { tables.apply(&mut stack, &op); },
-            1 => { tables.apply_with_depth(&mut stack, vx, vy, 0, 0); },
-            2 => { tables.apply_with_depth_stack(&mut stack); },
+            0 => {
+                tables.apply(&mut stack, &op);
+            }
+            1 => {
+                tables.apply_with_depth(&mut stack, vx, vy, 0, 0);
+            }
+            2 => {
+                tables.apply_with_depth_stack(&mut stack);
+            }
             _ => unreachable!(),
         }
 
@@ -396,24 +444,22 @@ mod test {
         assert!(stack.run().success);
     }
 
-
     #[test]
     fn test_binary_ops() {
         for test in 0..3 {
-            for b in [false,true] {
+            for b in [false, true] {
                 for i in 0..16 {
                     for j in 0..16 {
                         test_binary(i, j, Operation::And, i & j, b, test);
                         test_binary(i, j, Operation::Or, i | j, b, test);
                         test_binary(i, j, Operation::Xor, i ^ j, b, test);
                         test_binary(i, j, Operation::MulMod, (i * j) % 16, b, test);
-                        test_binary(i, j, Operation::MulQuotient, (i * j) / 16,b, test);
+                        test_binary(i, j, Operation::MulQuotient, (i * j) / 16, b, test);
                     }
                 }
             }
         }
     }
-
 
     #[test]
     fn test_unary_ops() {
@@ -440,16 +486,21 @@ mod test {
 
                         let varx = stack.number(x);
                         stack.number(y);
-                        let var_op : StackVariableOp = varx.into();
-                        tables.apply_shift_two_nibbles(&mut stack, j, right, Some(var_op.set_move()));
+                        let var_op: StackVariableOp = varx.into();
+                        tables.apply_shift_two_nibbles(
+                            &mut stack,
+                            j,
+                            right,
+                            Some(var_op.set_move()),
+                        );
 
                         let result = x * 16 + y;
                         let result = if right {
                             (result >> j) & 0xf
                         } else {
-                            ((result << j) & 0xf0 ) >> 4
+                            ((result << j) & 0xf0) >> 4
                         };
-                        stack.number(result); 
+                        stack.number(result);
 
                         stack.op_equal();
                         stack.to_altstack();
