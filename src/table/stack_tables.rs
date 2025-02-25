@@ -35,13 +35,13 @@ fn half_lookup(stack: &mut StackTracker) -> StackVariable {
         prev = 16 + prev - i;
         parts.push(prev);
     }
-    let mut parts = parts
+    let parts = parts
         .iter()
         .rev()
         .map(|x| stack.number(*x))
         .collect::<Vec<_>>();
     stack.rename(parts[0], "half_lookup");
-    stack.join_count(&mut parts[0], 15)
+    stack.join_count(parts[0], 15)
 }
 
 #[derive(Debug)]

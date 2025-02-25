@@ -586,9 +586,9 @@ mod tests {
         let mut stack = StackTracker::new();
         let tables = tables_for_sha256(&mut stack, 1);
         let number = stack.number_u32(INITSTATE[4]);
-        let mut x = stack.number(1);
+        let x = stack.number(1);
         stack.repeat(100);
-        stack.join_count(&mut x, 100);
+        stack.join_count(x, 100);
 
         let start = stack.get_script().len();
         let ret = calculate_s_stack(&mut stack, number, &tables, &vec![6, 11, 25], false);
@@ -627,9 +627,9 @@ mod tests {
         let e = stack.number_u32(INITSTATE[4]);
         let f = stack.number_u32(INITSTATE[5]);
         let g = stack.number_u32(INITSTATE[6]);
-        let mut x = stack.number(1);
+        let x = stack.number(1);
         stack.repeat(100);
-        stack.join_count(&mut x, 100);
+        stack.join_count(x, 100);
 
         let start = stack.get_script().len();
         let ret = ch_calculation_stack(&mut stack, e, f, g, &tables);
@@ -670,9 +670,9 @@ mod tests {
         let a = stack.number_u32(INITSTATE[0]);
         let b = stack.number_u32(INITSTATE[1]);
         let c = stack.number_u32(INITSTATE[2]);
-        let mut x = stack.number(1);
+        let x = stack.number(1);
         stack.repeat(100);
-        stack.join_count(&mut x, 100);
+        stack.join_count(x, 100);
 
         let start = stack.get_script().len();
         let ret = maj_calculation_stack(&mut stack, a, b, c, &tables);

@@ -95,7 +95,7 @@ pub fn right_rotate7_xored(
     stack.to_altstack();
 
     // z6 z7 >> 3
-    let mut w0 = tables.apply_shift_two_nibbles(stack, 3, true, None);
+    let w0 = tables.apply_shift_two_nibbles(stack, 3, true, None);
     stack.rename(w0, "w0");
 
     for i in 0..6 {
@@ -108,7 +108,7 @@ pub fn right_rotate7_xored(
     let w7 = tables.apply_shift_two_nibbles(stack, 3, true, None);
     stack.rename(w7, "w7");
 
-    stack.join_count(&mut w0, 7)
+    stack.join_count(w0, 7)
 }
 
 pub fn u4_add_direct(
@@ -513,10 +513,10 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
         if last_round && num_padding_bytes > 0 {
             //TODO: calculate how to join this instead of define
             for i in 0..(num_padding_bytes / 4) {
-                let mut m = stack.number(0);
+                let m = stack.number(0);
                 //stack.repeat(num_padding_bytes*2-1);
                 stack.repeat(7);
-                stack.join_count(&mut m, 7);
+                stack.join_count(m, 7);
                 stack.rename(m, &format!("padd_{}", i));
                 //let m = stack.define(8, &format!("padd_{}", i));
                 original_message.push(m);
