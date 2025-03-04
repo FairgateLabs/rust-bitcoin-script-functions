@@ -12,6 +12,8 @@ const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 ];
 
+const MAX_MSG_SIZE_IMPL: u32 = 288;
+
 const MSG_PERMUTATION: [u8; 16] = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
 
 pub fn right_rotate_xored(
@@ -461,46 +463,41 @@ pub fn tables_for_blake3(stack: &mut StackTracker, use_full_tables: bool) -> Sta
         .addition_operation(stack, 48)
 }
 
+pub fn to_le(stack: &mut StackTracker, var: StackVariable) -> StackVariable {
+    let le_0 = stack.move_var_sub_n(var, 6);
+    stack.move_var_sub_n(var, 6);
+    stack.move_var_sub_n(var, 4);
+    stack.move_var_sub_n(var, 4);
+    stack.move_var_sub_n(var, 2);
+    stack.move_var_sub_n(var, 2);
+    stack.move_var_sub_n(var, 0);
+    stack.move_var_sub_n(var, 0);
+    stack.join_count(le_0, 7)
+}
+
 // final rounds: 8 => 32 bytes hash
 // final rounds: 5 => 20 bytes hash (blake_160)
+// msg_len in bytes
 pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> StackVariable {
     assert!(
-        msg_len <= 288,
+        msg_len <= MAX_MSG_SIZE_IMPL,
         "This blake3 implementation supports up to 288 bytes"
     );
 
     let use_full_tables = msg_len <= 232;
 
     let num_blocks = (msg_len + 64 - 1) / 64;
-    let mut num_padding_bytes = num_blocks * 64 - msg_len;
-
-    //to handle the message the padding needs to be multiple of 4
-    //so if it's not multiple it needs to be added at the beginning
-    let mandatory_first_block_padding = num_padding_bytes % 4;
-    num_padding_bytes -= mandatory_first_block_padding;
-
-    if mandatory_first_block_padding > 0 {
-        stack.number(0);
-        stack.repeat((mandatory_first_block_padding) * 2 - 1);
-    }
+    let num_padding_bytes = num_blocks * 64 - msg_len;
+    let num_padding_nibbles = num_padding_bytes * 2;
 
     stack.clear_definitions();
-
-    let mut original_message = Vec::new();
-    for i in 0..msg_len / 4 {
-        let m = stack.define(8, &format!("msg_{}", i));
-        original_message.push(m);
-    }
-
-    for _ in original_message.iter() {
-        stack.to_altstack();
-    }
+    stack.define(msg_len * 2, "msg");
+    stack.to_altstack();
 
     let tables = tables_for_blake3(stack, use_full_tables);
 
-    for _ in original_message.iter() {
-        stack.from_altstack();
-    }
+    let full_msg = stack.from_altstack();
+    let mut full_msg = stack.explode(full_msg);
 
     //process every block
     for i in 0..num_blocks {
@@ -510,23 +507,19 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
         let flags = get_flags_for_block(i, num_blocks);
 
         // add the padding on the last round
-        if last_round && num_padding_bytes > 0 {
-            //TODO: calculate how to join this instead of define
-            for i in 0..(num_padding_bytes / 4) {
-                let m = stack.number(0);
-                //stack.repeat(num_padding_bytes*2-1);
-                stack.repeat(7);
-                stack.join_count(m, 7);
-                stack.rename(m, &format!("padd_{}", i));
-                //let m = stack.define(8, &format!("padd_{}", i));
-                original_message.push(m);
-            }
+        if last_round && num_padding_nibbles > 0 {
+            println!("padding: {}", num_padding_nibbles);
+            full_msg.push(stack.number(0));
+            full_msg.extend(stack.repeat(num_padding_nibbles - 1));
         }
 
         // create the current block message map
         let mut message = HashMap::new();
         for m in 0..16 {
-            message.insert(m as u8, original_message[m + (16 * i) as usize]);
+            let var = full_msg[m * 8 + (16 * 8 * i) as usize];
+            stack.join_count(var, 7);
+            let le_var = to_le(stack, var);
+            message.insert(m as u8, le_var);
         }
 
         // compress the block
@@ -569,6 +562,7 @@ mod tests {
     use bitcoin_script_stack::{
         debugger::debug_script, optimizer::optimize, script_util::verify_n, stack::StackTracker,
     };
+    use blake3::Hasher;
 
     use super::*;
 
@@ -620,13 +614,70 @@ mod tests {
         assert!(res.success);
     }
 
+    fn test_blake3_aux(n: u16) {
+        let mut stack = StackTracker::new();
+
+        let mut test: Vec<u8> = Vec::new();
+        for i in 0..n as u16 {
+            test.push((i % 251) as u8);
+        }
+
+        let mut hasher = Hasher::new();
+        hasher.update(&test);
+        let ret = hasher.finalize().as_bytes().to_vec();
+
+        //vec to hex
+        let hex_in = test
+            .iter()
+            .map(|x| format!("{:02x}", x))
+            .collect::<String>();
+
+        let hex_out = ret.iter().map(|x| format!("{:02x}", x)).collect::<String>();
+
+        stack.hexstr_as_nibbles(&hex_in);
+
+        stack.debug();
+        let result = blake3(&mut stack, (n * 1) as u32, 8);
+
+        let expected = stack.hexstr_as_nibbles(&hex_out);
+        stack.debug();
+        stack.equals(result, true, expected, true);
+        stack.op_true();
+        assert!(stack.run().success);
+    }
+
+    #[test]
+    fn test_blake3_all() {
+        //Reference values used in Blake3 tests
+        for i in [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            63,
+            64,
+            65,
+            127,
+            128,
+            129,
+            255,
+            MAX_MSG_SIZE_IMPL,
+        ] {
+            test_blake3_aux(i as u16);
+        }
+    }
+
     #[test]
     fn test_blake3() {
         let hex_out = "86ca95aefdee3d969af9bcc78b48a5c1115be5d66cafc2fc106bbd982d820e70";
 
         let mut stack = StackTracker::new();
 
-        let hex_in = "00000001".repeat(16);
+        let hex_in = "01000000".repeat(16);
         stack.hexstr_as_nibbles(&hex_in);
 
         let start = stack.get_script().len();
@@ -656,13 +707,16 @@ mod tests {
         let hex_out = "290eef2c4633e64835e2ea6395e9fc3e8bf459a7";
 
         let mut stack = StackTracker::new();
-        let hex_in = "00000001".repeat(10);
+        let hex_in = "01000000".repeat(10);
+        println!("hex_in: {}", hex_in);
         let _ = stack.hexstr_as_nibbles(&hex_in);
 
         let start = stack.get_script().len();
+        //let result = blake3(&mut stack, 58 / 2, 5);
         let result = blake3(&mut stack, 40, 5);
         let end = stack.get_script().len();
         println!("Blake3 size: {}", end - start);
+        stack.debug();
 
         let expected = stack.hexstr_as_nibbles(&hex_out);
         stack.equals(result, true, expected, true);
@@ -675,7 +729,7 @@ mod tests {
     fn test_long_blakes(repeat: u32, hex_out: &str) {
         let mut stack = StackTracker::new();
 
-        let hex_in = "00000001".repeat(repeat as usize);
+        let hex_in = "01000000".repeat(repeat as usize);
         stack.hexstr_as_nibbles(&hex_in);
 
         let start = stack.get_script().len();
