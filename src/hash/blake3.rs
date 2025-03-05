@@ -508,7 +508,6 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
 
         // add the padding on the last round
         if last_round && num_padding_nibbles > 0 {
-            println!("padding: {}", num_padding_nibbles);
             full_msg.push(stack.number(0));
             full_msg.extend(stack.repeat(num_padding_nibbles - 1));
         }
