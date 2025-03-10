@@ -39,9 +39,7 @@ pub fn reconstruct_checksum(
     checksum_size: u32,
     bits: u8,
 ) -> StackVariable {
-    stack.debug();
     stack.from_altstack();
-    stack.debug();
 
     let mut ret = StackVariable::null();
     for _ in 0..checksum_size - 1 {
@@ -51,7 +49,6 @@ pub fn reconstruct_checksum(
         }
         stack.from_altstack();
         ret = stack.op_add();
-        stack.debug();
     }
     ret
 }
@@ -80,8 +77,6 @@ pub fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, base: 
         stack.op_pick();
 
         stack.hexstr(&public_keys[digit]);
-
-        stack.debug();
 
         stack.op_equalverify();
 
@@ -134,7 +129,7 @@ mod tests {
     fn calculate_checksum(msg: &Vec<u8>, base: u8) -> u32 {
         let sum = msg.iter().sum::<u8>() as u32;
         let max = base as u32 * msg.len() as u32;
-        assert!(sum < max as u32);
+        assert!(sum <= max as u32);
         max as u32 - sum
     }
 
@@ -185,12 +180,6 @@ mod tests {
         stack.number(digit as u32);
 
         verify_digits(&mut stack, &vec![public_key], base);
-
-        stack.debug();
-        //<0x00>
-        //<0x9f7fd096d37ed2c0e3f7f0cfc924beef4ffceb68>
-        //<0x57622f345f73e1acadf0de4ce367dff391afa3a7>
-        //<0x9724e32791f98971fd669d03c6bfdaa3aea491c9>
     }
 
     #[test]
@@ -206,7 +195,6 @@ mod tests {
 
         let result = reconstruct_checksum(&mut stack, checksum.len() as u32, 2);
         let expected = stack.number(1 * 16 + 2 * 4 + 3);
-        stack.debug();
         stack.equals(result, true, expected, true);
         stack.op_true();
         assert!(stack.run().success);
@@ -239,32 +227,27 @@ mod tests {
         let mut stack = StackTracker::new();
 
         let message_size = 2;
-        let base = 3;
-        let bits_per_digit = 2;
+        let base = 15;
+        let bits_per_digit = 4;
 
         let secret_0 = "001122";
         let secret_1 = "223344";
         let checksum_0 = "336677";
         let checksum_1 = "446677";
 
-        let secrets = vec![secret_0, secret_1, checksum_0, checksum_1];
-        let msg = vec![1, 1];
+        let msg = vec![15, 15];
 
         // witness generation
         let checksum = calculate_checksum(&msg, base);
         let checksum_digits = to_base_padded(checksum, base, base as u32 * msg.len() as u32);
-        let mut msg_and_chk: Vec<u8> = msg.iter().chain(checksum_digits.iter()).cloned().collect();
-        msg_and_chk.reverse();
+        println!("Checksum: {:?}", checksum_digits);
+        let msg_and_chk: Vec<u8> = msg.iter().chain(checksum_digits.iter()).cloned().collect();
 
+        let mut secrets = vec![secret_0, secret_1, checksum_0, checksum_1];
+        secrets.reverse();
         for i in 0..msg_and_chk.len() {
             stack.hexstr(&sign_digit(&secrets[i], base, msg_and_chk[i] as u8));
             stack.number(msg_and_chk[i] as u32);
-            stack.to_altstack();
-            stack.to_altstack();
-        }
-        for _ in 0..msg_and_chk.len() {
-            stack.from_altstack();
-            stack.from_altstack();
         }
 
         // verification script
@@ -284,7 +267,10 @@ mod tests {
             false,
         );
 
+        println!("Script size: {}", stack.get_script().len());
+
         stack.op_true();
+
         assert!(stack.run().success);
     }
 }
