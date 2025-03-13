@@ -1,25 +1,19 @@
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 
-pub const BASE: u8 = 4;
+pub const DIGITS_PER_BIT: u8 = 4;
+pub const BASE: u8 = 1 << DIGITS_PER_BIT;
+pub const MAX: u8 = BASE - 1;
 
 pub type WinternitzSignature = Vec<u8>;
 
-//pub fn pub_key_gen(sec_key: &[u8]) {}
-
-//pub fn witernitz_verification(message_size: u32, checksum_size: u32, base: u32) {}
-
-//create mod test
-//nbits = 2
-//W = 3
-
 //assumes that the altstack contains the digits of the message
-pub fn digits_checksum(
+fn digits_checksum(
     stack: &mut StackTracker,
     message_size: u32,
-    base: u8,
+    max: u8,
     keep_message: bool,
 ) -> StackVariable {
-    stack.number(base as u32 * message_size);
+    stack.number(max as u32 * message_size);
     let mut ret = StackVariable::null();
 
     for _ in 0..message_size {
@@ -34,11 +28,7 @@ pub fn digits_checksum(
 }
 
 //assumes that the altstack contains the digits of the checksum with the high part being the first to be obtained
-pub fn reconstruct_checksum(
-    stack: &mut StackTracker,
-    checksum_size: u32,
-    bits: u8,
-) -> StackVariable {
+fn reconstruct_checksum(stack: &mut StackTracker, checksum_size: u32, bits: u8) -> StackVariable {
     stack.from_altstack();
 
     let mut ret = StackVariable::null();
@@ -53,10 +43,10 @@ pub fn reconstruct_checksum(
     ret
 }
 
-pub fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, base: u8) {
+fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, max: u8) {
     for digit in 0..public_keys.len() {
         //sanitize hint
-        stack.number(base as u32);
+        stack.number(max as u32);
         stack.op_min();
 
         //save two copies of the hint
@@ -65,37 +55,34 @@ pub fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, base: 
         stack.to_altstack();
 
         //creates all the hashes from the provided secret key on the stack
-        for _ in 0..base {
+        for _ in 0..max {
             stack.op_dup();
             stack.op_hash160();
         }
 
-        stack.number(base as u32);
         stack.from_altstack();
-        stack.op_sub();
-
         stack.op_pick();
 
         stack.hexstr(&public_keys[digit]);
 
         stack.op_equalverify();
 
-        for _ in 0..(base + 1) / 2 {
+        for _ in 0..(max + 1) / 2 {
             stack.op_2drop();
         }
     }
 }
 
-pub fn verify_winternitz(
+pub fn winternitz_checksig(
     stack: &mut StackTracker,
     public_keys: &Vec<String>,
     message_size: u32,
-    base: u8,
+    max: u8,
     bits_per_digit: u8,
     keep_message: bool,
 ) {
-    verify_digits(stack, &public_keys, base);
-    let checksum = digits_checksum(stack, message_size, base, keep_message);
+    verify_digits(stack, &public_keys, max);
+    let checksum = digits_checksum(stack, message_size, max, keep_message);
     let checksum_size = public_keys.len() as u32 - message_size;
     let reconstructed = reconstruct_checksum(stack, checksum_size, bits_per_digit);
     stack.equals(checksum, true, reconstructed, true);
@@ -114,27 +101,26 @@ mod tests {
         hex::encode(rip)
     }
 
-    fn public_key(secret: &str, base: u8) -> String {
-        sign_digit(secret, base, 0)
+    fn public_key(secret: &str, max: u8) -> String {
+        sign_digit(secret, max)
     }
 
-    fn sign_digit(secret: &str, base: u8, digit: u8) -> String {
+    fn sign_digit(secret: &str, digit: u8) -> String {
         let mut ret = secret.to_string();
-        for _ in 0..(base - digit) {
+        for _ in 0..digit {
             ret = hash160(&ret);
         }
         ret
     }
 
-    fn calculate_checksum(msg: &Vec<u8>, base: u8) -> u32 {
+    fn calculate_checksum(msg: &Vec<u8>, max_value_digit: u8) -> u32 {
         let sum = msg.iter().sum::<u8>() as u32;
-        let max = base as u32 * msg.len() as u32;
-        assert!(sum <= max as u32);
-        max as u32 - sum
+        let max_value_all = max_value_digit as u32 * msg.len() as u32;
+        assert!(sum <= max_value_all as u32);
+        max_value_all as u32 - sum
     }
 
-    fn to_base_padded(mut num: u32, mut base: u8, max_num: u32) -> Vec<u8> {
-        base += 1;
+    fn to_base_padded(mut num: u32, base: u8, max_num: u32) -> Vec<u8> {
         assert!(base > 1, "Base must be greater than 1");
 
         let mut result = Vec::new();
@@ -169,17 +155,19 @@ mod tests {
     fn test_verify_digits() {
         let mut stack = StackTracker::new();
 
-        let base = 3;
+        let max = 3;
 
         let digit = 0;
-        let secret = "010234242342349203";
-        let public_key = public_key(secret, base);
-        let signed = sign_digit(secret, base, digit);
+        let secret = "deadbeef";
+        let public_key = public_key(secret, max);
+        println!("Public key: {}", public_key);
+        let signed = sign_digit(secret, digit);
+        println!("Signed: {}", signed);
 
         stack.hexstr(&signed);
         stack.number(digit as u32);
 
-        verify_digits(&mut stack, &vec![public_key], base);
+        verify_digits(&mut stack, &vec![public_key], max);
     }
 
     #[test]
@@ -213,10 +201,10 @@ mod tests {
             stack.to_altstack();
         }
 
-        let base = 3;
-        let result = digits_checksum(&mut stack, digits.len() as u32, base, false);
+        let max = 3;
+        let result = digits_checksum(&mut stack, digits.len() as u32, max, false);
         let sum = digits.iter().sum::<u32>();
-        let expected = stack.number((base as u32 * digits.len() as u32) - sum);
+        let expected = stack.number((max as u32 * digits.len() as u32) - sum);
         stack.equals(result, true, expected, true);
         stack.op_true();
         assert!(stack.run().success);
@@ -227,42 +215,36 @@ mod tests {
         let mut stack = StackTracker::new();
 
         let message_size = 2;
-        let base = 15;
+        let max = MAX;
+        let base = BASE;
         let bits_per_digit = 4;
 
-        let secret_0 = "001122";
-        let secret_1 = "223344";
-        let checksum_0 = "336677";
-        let checksum_1 = "446677";
+        let secrets = vec!["00", "11", "22", "33"]
+            .iter()
+            .map(|s| hash160(s))
+            .collect::<Vec<String>>();
+
+        let public_keys = secrets.iter().rev().map(|s| public_key(s, max)).collect();
 
         let msg = vec![15, 15];
 
         // witness generation
-        let checksum = calculate_checksum(&msg, base);
-        let checksum_digits = to_base_padded(checksum, base, base as u32 * msg.len() as u32);
-        println!("Checksum: {:?}", checksum_digits);
+        let checksum = calculate_checksum(&msg, max);
+        let checksum_digits = to_base_padded(checksum, base, max as u32 * msg.len() as u32);
         let msg_and_chk: Vec<u8> = msg.iter().chain(checksum_digits.iter()).cloned().collect();
 
-        let mut secrets = vec![secret_0, secret_1, checksum_0, checksum_1];
-        secrets.reverse();
         for i in 0..msg_and_chk.len() {
-            stack.hexstr(&sign_digit(&secrets[i], base, msg_and_chk[i] as u8));
+            stack.hexstr(&sign_digit(&secrets[i], msg_and_chk[i] as u8));
             stack.number(msg_and_chk[i] as u32);
         }
 
         // verification script
-        let public_keys = vec![
-            public_key(secret_0, base),
-            public_key(secret_1, base),
-            public_key(checksum_0, base),
-            public_key(checksum_1, base),
-        ];
 
-        verify_winternitz(
+        winternitz_checksig(
             &mut stack,
             &public_keys,
             message_size,
-            base,
+            max,
             bits_per_digit,
             false,
         );
