@@ -7,7 +7,7 @@ authors = ["Martin Jonas <martinjonas@gmail.com>"]
 [dependencies]
 bitcoin-script-stack = { git = "https://github.com/FairgateLabs/rust-bitcoin-script-stack", branch = "v2" }
 bitcoin-script = { git = "https://github.com/FairgateLabs/rust-bitcoin-script", branch = "bitvmx" }
-bitcoin = "=0.32.5"
+bitcoin = "=0.32.6"
 
 [dev-dependencies]
 sha2 = "0.10.8"
