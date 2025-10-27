@@ -1,5 +1,5 @@
+use bitcoin::secp256k1::SecretKey;
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
-
 pub const DIGITS_PER_BIT: u8 = 4;
 pub const BASE: u8 = 1 << DIGITS_PER_BIT;
 pub const MAX: u8 = BASE - 1;
@@ -44,15 +44,22 @@ fn reconstruct_checksum(stack: &mut StackTracker, checksum_size: u32, bits: u8) 
 }
 
 fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, max: u8) {
+    const PUBLIC_KEY_SIZE: u32 = 20;
+
     for digit in 0..public_keys.len() {
-        //sanitize hint
+        // This is a sanitization of the hint to ensure the hint do not exceed the max times to hash the secret key.
         stack.number(max as u32);
         stack.op_min();
 
-        //save two copies of the hint
+        // Save two copies of the hint
         stack.op_dup();
         stack.to_altstack();
         stack.to_altstack();
+
+        // Check if the public key is 20 bytes
+        stack.op_size();
+        stack.number(PUBLIC_KEY_SIZE);
+        stack.op_equalverify();
 
         //creates all the hashes from the provided secret key on the stack
         for _ in 0..max {
@@ -64,7 +71,6 @@ fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, max: u8) {
         stack.op_pick();
 
         stack.hexstr(&public_keys[digit]);
-
         stack.op_equalverify();
 
         for _ in 0..(max + 1) / 2 {
@@ -155,19 +161,26 @@ mod tests {
     fn test_verify_digits() {
         let mut stack = StackTracker::new();
 
-        let max = 3;
+        // Max hashes until public key
+        // priv_0 = secret
+        // priv_1 = H(secret)
+        // priv_2 = H(priv_1)
+        // public_key = H(priv_2)
+        let times_to_pubkey = 3;
+        let hint = 0; // This could be 0, 1, or 2.
 
-        let digit = 0;
-        let secret = "deadbeef";
-        let public_key = public_key(secret, max);
-        println!("Public key: {}", public_key);
-        let signed = sign_digit(secret, digit);
-        println!("Signed: {}", signed);
+        // Secret key should be 20 bytes otherwise the script will fail (in case hint 0 = priv_0 = secret)
+        let secret = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+        let public_key = public_key(secret, times_to_pubkey);
+        let signed = sign_digit(secret, hint);
 
         stack.hexstr(&signed);
-        stack.number(digit as u32);
+        stack.number(hint as u32);
 
-        verify_digits(&mut stack, &vec![public_key], max);
+        verify_digits(&mut stack, &vec![public_key], times_to_pubkey);
+
+        stack.op_true();
+        assert!(stack.run().success);
     }
 
     #[test]
