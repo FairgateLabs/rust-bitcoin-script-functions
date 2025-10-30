@@ -94,6 +94,34 @@ pub fn winternitz_checksig(
     stack.equals(checksum, true, reconstructed, true);
 }
 
+pub fn get_winternitz_checksig_script(
+    public_keys: &Vec<String>,
+    message_size: u32,
+    max: u8,
+    bits_per_digit: u8,
+    keep_message: bool,
+) -> bitcoin::ScriptBuf {
+    let mut stack = StackTracker::new();
+
+    // Define the public keys and hints in the stack (needed for the stack tracker to work)
+    for i in 0..public_keys.len() {
+        stack.define(1, format!("public_key_{}", i).as_str());
+        stack.define(1, format!("hint_{}", i).as_str());
+    }
+
+    winternitz_checksig(
+        &mut stack,
+        public_keys,
+        message_size,
+        max,
+        bits_per_digit,
+        keep_message,
+    );
+
+    // Return the script from the stack tracker, defined variables are not included in the script.
+    stack.get_script()
+}
+
 #[cfg(test)]
 mod tests {
 
