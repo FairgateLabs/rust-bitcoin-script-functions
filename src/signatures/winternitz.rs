@@ -94,6 +94,117 @@ pub fn winternitz_checksig(
     stack.equals(checksum, true, reconstructed, true);
 }
 
+pub fn winternitz_checksig_old(
+    public_keys: &Vec<String>,
+    message_size: u32,
+    base: u32,
+    bits_per_digit: u8,
+    keep_message: bool,
+) -> StackTracker {
+    let mut stack = StackTracker::new();
+    let total_size = public_keys.len() as u32;
+    let checksum_size = public_keys.len() as u32 - message_size;
+
+    // Define the public keys and hints in the stack (needed for the stack tracker to work)
+    for i in 0..public_keys.len() {
+        stack.define(1, format!("public_key_{}", i).as_str());
+        stack.define(1, format!("hint_{}", i).as_str());
+    }
+
+    // Verify the hash chain for each digit
+    for digit_index in 0..total_size {
+        // Verify that the digit is in the range [0, base]
+        stack.number(base);
+        stack.op_min();
+
+        // Push two copies of the digit onto the altstack
+        stack.op_dup();
+        stack.to_altstack();
+        stack.to_altstack();
+
+        // Hash the input hash base times and put every result on the stack
+        for _ in 0..base {
+            stack.op_dup();
+            stack.op_hash160();
+        }
+
+        // Compute the offset of the hash table entry for this digit
+        stack.number(base);
+        stack.from_altstack();
+        stack.op_sub();
+
+        // Verify the signature for this digit
+        stack.op_pick();
+        let public_key_index = (total_size - 1) as usize - digit_index as usize;
+        stack.hexstr(&public_keys[public_key_index]);
+        stack.op_equalverify();
+
+        // Drop the hash table entries from the stack
+        for _ in 0..(base + 1) / 2 {
+            stack.op_2drop();
+        }
+    }
+
+    // Verify the Checksum
+    // 1. Compute the checksum of the message's digits
+    stack.from_altstack();
+    stack.op_dup();
+    stack.op_negate();
+
+    for _ in 1..message_size {
+        stack.from_altstack();
+        stack.op_tuck();
+        stack.op_sub();
+    }
+
+    stack.number(base * message_size);
+    stack.op_add();
+
+    // 2. Sum up the signed checksum's digits
+    stack.from_altstack();
+
+    for _ in 0..checksum_size - 1 {
+        for _ in 0..bits_per_digit {
+            stack.op_dup();
+            stack.op_add();
+        }
+
+        stack.from_altstack();
+        stack.op_add();
+    }
+
+    // 3. Ensure both checksums are equal
+    stack.op_equalverify();
+
+    if !keep_message {
+        // Drop the message's digits from the stack
+        if message_size == 1 {
+            // For single element, use op_2drop with a dummy (push 0 then drop both)
+            stack.number(0);
+            stack.op_2drop();
+        } else {
+            if message_size % 2 == 0 {
+                for _ in 0..(message_size / 2) {
+                    stack.op_2drop();
+                }
+            } else {
+                for _ in 0..(message_size / 2) {
+                    stack.op_2drop();
+                }
+                // Drop remaining single element
+                stack.number(0);
+                stack.op_2drop();
+            }
+        }
+    } else {
+        for _ in 0..message_size {
+            stack.to_altstack();
+        }
+    }
+
+    stack
+}
+
 pub fn get_winternitz_checksig_script(
     public_keys: &Vec<String>,
     message_size: u32,
@@ -127,6 +238,7 @@ mod tests {
 
     use super::*;
     use bitcoin::hashes::{ripemd160, sha256, Hash};
+    use bitcoin_script_stack::interactive::interactive;
 
     fn hash160(data: &str) -> String {
         let data = hex::decode(data).unwrap();
@@ -295,5 +407,36 @@ mod tests {
         stack.op_true();
 
         assert!(stack.run().success);
+    }
+
+    #[test]
+    fn test_winternitz_old() {
+        let message_size = 2;
+        let max: u32 = MAX as u32;
+        let bits_per_digit = 4;
+
+        let secrets = vec!["00", "11", "22", "33", "44"]
+            .iter()
+            .map(|s| hash160(s))
+            .collect::<Vec<String>>();
+
+        let public_keys: Vec<String> = secrets
+            .iter()
+            .rev()
+            .map(|s| public_key(s, max as u8))
+            .collect();
+
+        let mut stack =
+            winternitz_checksig_old(&public_keys, message_size, max, bits_per_digit, false);
+
+        println!("Script size: {}", stack.get_script().len());
+
+        stack.from_altstack();
+        stack.from_altstack();
+        stack.op_add();
+        stack.op_true();
+
+        interactive(&stack);
+        //assert!(stack.run().success);
     }
 }
