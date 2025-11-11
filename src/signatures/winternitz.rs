@@ -92,6 +92,12 @@ pub fn winternitz_checksig(
     let checksum_size = public_keys.len() as u32 - message_size;
     let reconstructed = reconstruct_checksum(stack, checksum_size, bits_per_digit);
     stack.equals(checksum, true, reconstructed, true);
+
+    if keep_message {
+        for _ in 0..message_size {
+            stack.to_altstack();
+        }
+    }
 }
 
 pub fn get_winternitz_checksig_script(
@@ -252,7 +258,51 @@ mod tests {
     }
 
     #[test]
-    fn test_winternitz() {
+    fn test_winternitz_keep_message() {
+        let mut stack = StackTracker::new();
+
+        let message_size = 2;
+        let max = MAX;
+        let base = BASE;
+        let bits_per_digit = 4;
+
+        let secrets = vec!["00", "11", "22", "33"]
+            .iter()
+            .map(|s| hash160(s))
+            .collect::<Vec<String>>();
+
+        let public_keys = secrets.iter().rev().map(|s| public_key(s, max)).collect();
+
+        let msg = vec![15, 15];
+
+        // witness generation
+        let checksum = calculate_checksum(&msg, max);
+        let checksum_digits = to_base_padded(checksum, base, max as u32 * msg.len() as u32);
+        let msg_and_chk: Vec<u8> = msg.iter().chain(checksum_digits.iter()).cloned().collect();
+
+        for i in 0..msg_and_chk.len() {
+            stack.hexstr(&sign_digit(&secrets[i], msg_and_chk[i] as u8));
+            stack.number(msg_and_chk[i] as u32);
+        }
+
+        // verification script
+
+        winternitz_checksig(
+            &mut stack,
+            &public_keys,
+            message_size,
+            max,
+            bits_per_digit,
+            true,
+        );
+
+        stack.op_true();
+
+        assert!(stack.run().success);
+    }
+
+    #[test]
+    fn test_winternitz_do_not_keep_message() {
         let mut stack = StackTracker::new();
 
         let message_size = 2;
@@ -289,8 +339,6 @@ mod tests {
             bits_per_digit,
             false,
         );
-
-        println!("Script size: {}", stack.get_script().len());
 
         stack.op_true();
 
