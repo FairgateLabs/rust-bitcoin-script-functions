@@ -21,6 +21,7 @@ fn digits_checksum(
         if keep_message {
             stack.op_tuck();
         }
+
         ret = stack.op_sub();
     }
 
@@ -92,6 +93,12 @@ pub fn winternitz_checksig(
     let checksum_size = public_keys.len() as u32 - message_size;
     let reconstructed = reconstruct_checksum(stack, checksum_size, bits_per_digit);
     stack.equals(checksum, true, reconstructed, true);
+
+    if keep_message {
+        for _ in 0..message_size {
+            stack.to_altstack();
+        }
+    }
 }
 
 pub fn winternitz_checksig_old(
@@ -399,12 +406,13 @@ mod tests {
             message_size,
             max,
             bits_per_digit,
-            false,
+            true,
         );
 
         println!("Script size: {}", stack.get_script().len());
 
         stack.op_true();
+        interactive(&stack);
 
         assert!(stack.run().success);
     }
@@ -431,12 +439,9 @@ mod tests {
 
         println!("Script size: {}", stack.get_script().len());
 
-        stack.from_altstack();
-        stack.from_altstack();
-        stack.op_add();
         stack.op_true();
 
         interactive(&stack);
-        //assert!(stack.run().success);
+        assert!(stack.run().success);
     }
 }
