@@ -43,7 +43,7 @@ fn reconstruct_checksum(stack: &mut StackTracker, checksum_size: u32, bits: u8) 
 }
 
 fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, max: u8) {
-    const PUBLIC_KEY_SIZE: u32 = 20;
+    const OTS_SIZE: u32 = 20;
 
     for digit in 0..public_keys.len() {
         // This is a sanitization of the hint to ensure the hint do not exceed the max times to hash the secret key.
@@ -55,9 +55,9 @@ fn verify_digits(stack: &mut StackTracker, public_keys: &Vec<String>, max: u8) {
         stack.to_altstack();
         stack.to_altstack();
 
-        // Check if the public key is 20 bytes
+        // Check if the one-time signature is 20 bytes
         stack.op_size();
-        stack.number(PUBLIC_KEY_SIZE);
+        stack.number(OTS_SIZE);
         stack.op_equalverify();
 
         //creates all the hashes from the provided secret key on the stack
