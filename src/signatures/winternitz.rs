@@ -154,7 +154,7 @@ mod tests {
     }
 
     fn calculate_checksum(msg: &Vec<u8>, max_value_digit: u8) -> u32 {
-        let sum = msg.iter().sum::<u8>() as u32;
+        let sum: u32 = msg.iter().map(|x| *x as u32).sum();
         let max_value_all = max_value_digit as u32 * msg.len() as u32;
         assert!(sum <= max_value_all as u32);
         max_value_all as u32 - sum
