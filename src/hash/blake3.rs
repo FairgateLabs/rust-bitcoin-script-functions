@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use bitcoin_script_stack::stack::{StackTracker, StackVariable};
 
-pub use bitcoin_script::{define_pushable, script};
-define_pushable!();
+pub use bitcoin_script::script;
 pub use bitcoin::ScriptBuf as Script;
 
 use crate::table::stack_tables::{Operation, StackTables};
@@ -553,11 +552,8 @@ pub fn blake3(stack: &mut StackTracker, mut msg_len: u32, final_rounds: u8) -> S
 
 #[cfg(test)]
 mod tests {
-
     use std::collections::HashMap;
-
-    pub use bitcoin_script::{define_pushable, script};
-    define_pushable!();
+    pub use bitcoin_script::script;
     use bitcoin_script_stack::{
         debugger::debug_script, optimizer::optimize, script_util::verify_n, stack::StackTracker,
     };
@@ -786,7 +782,7 @@ mod tests {
 
         stack.number_u32(0x57bf5f7b);
 
-        stack.custom(script! { {verify_n(8)}}, 2, false, 0, "verify");
+        stack.custom(script! { {verify_n(8)}}.compile(), 2, false, 0, "verify");
 
         stack.drop(ret[1]);
 
@@ -831,16 +827,16 @@ mod tests {
         println!("G size: {}", end - start);
 
         stack.number_u32(0xc4d46c6c); //b
-        stack.custom(script! { {verify_n(8)}}, 2, false, 0, "verify");
+        stack.custom(script! { {verify_n(8)}}.compile(), 2, false, 0, "verify");
 
         stack.number_u32(0x6a063602); //c
-        stack.custom(script! { {verify_n(8)}}, 2, false, 0, "verify");
+        stack.custom(script! { {verify_n(8)}}.compile(), 2, false, 0, "verify");
 
         stack.number_u32(0x6a003600); //d
-        stack.custom(script! { {verify_n(8)}}, 2, false, 0, "verify");
+        stack.custom(script! { {verify_n(8)}}.compile(), 2, false, 0, "verify");
 
         stack.number_u32(0x0030006a); //a
-        stack.custom(script! { {verify_n(8)}}, 2, false, 0, "verify");
+        stack.custom(script! { {verify_n(8)}}.compile(), 2, false, 0, "verify");
 
         stack.drop(ret[5]);
         stack.drop(ret[4]);
