@@ -1,12 +1,12 @@
 [package]
 name = "bitcoin-script-functions"
-version = "3.0.0"
+version = "0.6.0"
 edition = "2021"
 authors = ["Martin Jonas <martinjonas@gmail.com>"]
 
 [dependencies]
-bitcoin-script-stack = { git = "https://github.com/FairgateLabs/rust-bitcoin-script-stack", tag = "v3.0.0" }
-bitcoin-script = { git = "https://github.com/FairgateLabs/rust-bitcoin-script", tag = "v3.0.0" }
+bitcoin-script-stack = { git = "https://github.com/FairgateLabs/rust-bitcoin-script-stack", tag = "v0.6.0" }
+bitcoin-script = { git = "https://github.com/FairgateLabs/rust-bitcoin-script", tag = "v0.6.0" }
 bitcoin = "0.32.6"
 
 [dev-dependencies]
